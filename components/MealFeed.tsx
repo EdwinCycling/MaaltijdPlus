@@ -16,6 +16,7 @@ interface Meal {
   description: string;
   ingredients?: string;
   recipe?: string;
+  shoppingList?: string;
   date: string;
   healthScore?: number;
   createdAt: Timestamp;
@@ -108,7 +109,7 @@ export default function MealFeed({ refreshTrigger }: { refreshTrigger: number })
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 print:hidden">
       {/* Controls */}
       <div className="flex flex-col xl:flex-row gap-4 items-center justify-between glass p-4 rounded-2xl border border-slate-200 dark:border-slate-800 transition-colors duration-400">
         

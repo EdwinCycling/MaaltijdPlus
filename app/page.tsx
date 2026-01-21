@@ -79,47 +79,48 @@ export default function Home() {
 
   return (
     <div className="min-h-screen pb-10 transition-colors duration-400" style={{ backgroundColor: 'var(--bg-color)', color: 'var(--text-color)' }}>
-      {/* Header */}
-      <header className="bg-white/10 dark:bg-slate-900/10 backdrop-blur-md shadow-sm border-b border-slate-200 dark:border-slate-800 sticky top-0 z-10 transition-colors duration-400">
-        <div className="max-w-4xl mx-auto px-4 py-3 sm:py-4 flex flex-col sm:flex-row justify-between items-center gap-3 sm:gap-0">
-          <div className="flex items-center justify-between w-full sm:w-auto">
-            <div className="flex items-center gap-2">
-              <span className="text-2xl">🥗</span>
-              <h1 className="text-xl font-extrabold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-                MaaltijdPlus
-              </h1>
-            </div>
-            {/* Mobile-only toggle or spacing if needed, but flex-col handles the rest */}
-          </div>
-          
-          <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-4 w-full sm:w-auto border-t border-slate-200/50 dark:border-slate-800/50 pt-2 sm:pt-0 sm:border-0">
-            <div className="flex items-center gap-2 sm:gap-4">
-              {!isStandalone && (deferredPrompt || isIOS) && (
-                <button 
-                  onClick={handleInstallClick}
-                  className="flex items-center gap-2 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-3 py-1.5 rounded-xl text-sm font-bold border border-blue-200 dark:border-blue-800 hover:scale-105 transition-all"
-                >
-                  <span>📲</span> <span className="hidden sm:inline">Installeren</span>
-                </button>
-              )}
-              <span className="text-sm text-slate-500 dark:text-slate-400 hidden md:inline font-medium">
-                {user.email}
-              </span>
+      <div className="print:hidden">
+        {/* Header */}
+        <header className="bg-white/10 dark:bg-slate-900/10 backdrop-blur-md shadow-sm border-b border-slate-200 dark:border-slate-800 sticky top-0 z-10 transition-colors duration-400">
+          <div className="max-w-4xl mx-auto px-4 py-3 sm:py-4 flex flex-col sm:flex-row justify-between items-center gap-3 sm:gap-0">
+            <div className="flex items-center justify-between w-full sm:w-auto">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl">🥗</span>
+                <h1 className="text-xl font-extrabold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+                  MaaltijdPlus
+                </h1>
+              </div>
+              {/* Mobile-only toggle or spacing if needed, but flex-col handles the rest */}
             </div>
             
-            <div className="flex items-center gap-2">
-              <ThemeToggle />
-              <button 
-                onClick={logout}
-                className="flex items-center justify-center gap-2 bg-red-50 dark:bg-red-900/20 text-red-600 px-4 py-2 rounded-xl text-sm font-bold border border-red-200 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-900/40 transition-all"
-              >
-                <span>🚪</span>
-                <span className="hidden sm:inline">Logout</span>
-              </button>
+            <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-4 w-full sm:w-auto border-t border-slate-200/50 dark:border-slate-800/50 pt-2 sm:pt-0 sm:border-0">
+              <div className="flex items-center gap-2 sm:gap-4">
+                {!isStandalone && (deferredPrompt || isIOS) && (
+                  <button 
+                    onClick={handleInstallClick}
+                    className="flex items-center gap-2 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-3 py-1.5 rounded-xl text-sm font-bold border border-blue-200 dark:border-blue-800 hover:scale-105 transition-all"
+                  >
+                    <span>📲</span> <span className="hidden sm:inline">Installeren</span>
+                  </button>
+                )}
+                <span className="text-sm text-slate-500 dark:text-slate-400 hidden md:inline font-medium">
+                  {user.email}
+                </span>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <ThemeToggle />
+                <button 
+                  onClick={logout}
+                  className="flex items-center justify-center gap-2 bg-red-50 dark:bg-red-900/20 text-red-600 px-4 py-2 rounded-xl text-sm font-bold border border-red-200 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-900/40 transition-all"
+                >
+                  <span>🚪</span>
+                  <span className="hidden sm:inline">Logout</span>
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      </header>
+        </header>
 
       <main className="max-w-6xl mx-auto px-4 py-8">
         <div className="flex flex-col gap-8">
@@ -149,6 +150,7 @@ export default function Home() {
           </div>
         </div>
       </main>
+      </div>
 
       {/* PWA Install Modal for iOS */}
       {showInstallModal && (

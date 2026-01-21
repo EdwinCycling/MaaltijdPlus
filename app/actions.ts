@@ -56,6 +56,7 @@ export async function analyzeMeal(imageBase64: string, mimeType: string) {
       "details": "Een gedetailleerde beschrijving van het gerecht", 
       "ingredients": ["lijst", "van", "ingrediënten"], 
       "recipe": "stap-voor-stap bereidingswijze", 
+      "shoppingList": "een overzichtelijke boodschappenlijst voor 2 personen, gegroepeerd per afdeling van de Albert Heijn (bijv. Groenten, Zuivel, Houdbaar)",
       "healthScore": een getal tussen 1 en 10 
     } 
     Retourneer ALLEEN de JSON.`;

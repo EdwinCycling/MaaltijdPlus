@@ -14,6 +14,7 @@ interface AIResult {
   details?: string;
   ingredients?: string[];
   recipe?: string;
+  shoppingList?: string;
   healthScore?: number;
 }
 
@@ -26,6 +27,7 @@ export default function AddMealForm({ onMealAdded, onCancel }: { onMealAdded: ()
   const [description, setDescription] = useState("");
   const [ingredients, setIngredients] = useState("");
   const [recipe, setRecipe] = useState("");
+  const [shoppingList, setShoppingList] = useState("");
   const [healthScore, setHealthScore] = useState<number>(5);
   
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -115,6 +117,7 @@ export default function AddMealForm({ onMealAdded, onCancel }: { onMealAdded: ()
           setIngredients(result.ingredients.join("\n"));
         }
         if (result.recipe) setRecipe(result.recipe);
+        if (result.shoppingList) setShoppingList(result.shoppingList);
         if (result.healthScore) setHealthScore(result.healthScore);
         
         toast.success("Analyse voltooid en velden ingevuld!");
@@ -165,6 +168,7 @@ export default function AddMealForm({ onMealAdded, onCancel }: { onMealAdded: ()
     const cleanDescription = description.trim().substring(0, 500);
     const cleanIngredients = ingredients.trim().substring(0, 1000);
     const cleanRecipe = recipe.trim().substring(0, 2000);
+    const cleanShoppingList = shoppingList.trim().substring(0, 1500);
 
     if (!cleanTitle) {
       toast.error("Titel is verplicht");
@@ -187,6 +191,7 @@ export default function AddMealForm({ onMealAdded, onCancel }: { onMealAdded: ()
         description: cleanDescription,
         ingredients: cleanIngredients,
         recipe: cleanRecipe,
+        shoppingList: cleanShoppingList,
         healthScore: Number(healthScore),
         date,
         createdAt: serverTimestamp(),
@@ -199,6 +204,7 @@ export default function AddMealForm({ onMealAdded, onCancel }: { onMealAdded: ()
       setDescription("");
       setIngredients("");
       setRecipe("");
+      setShoppingList("");
       setHealthScore(5);
       setAiResult(null);
       onMealAdded();
@@ -357,6 +363,18 @@ export default function AddMealForm({ onMealAdded, onCancel }: { onMealAdded: ()
                   maxLength={2000}
                 />
               </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider ml-1">Boodschappenlijst (AH - 2 personen)</label>
+              <textarea 
+                placeholder="Groenten:&#10;- 500g Aardappelen&#10;&#10;Vlees:&#10;- 1 Rookworst"
+                value={shoppingList}
+                onChange={(e) => setShoppingList(e.target.value.substring(0, 1500))}
+                className="input-field mt-1 min-h-[100px]"
+                rows={4}
+                maxLength={1500}
+              />
             </div>
 
             <div className="flex flex-col md:flex-row md:items-center gap-6">

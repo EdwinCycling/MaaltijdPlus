@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Image from "next/image";
 import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase";
@@ -17,6 +18,7 @@ interface Meal {
   description: string;
   ingredients?: string;
   recipe?: string;
+  shoppingList?: string;
   date: string;
   healthScore?: number;
   createdAt: any;
@@ -38,6 +40,7 @@ export default function MealModal({ meal, onClose, onDelete, onUpdate }: MealMod
   const [editDescription, setEditDescription] = useState(meal.description);
   const [editIngredients, setEditIngredients] = useState(meal.ingredients || "");
   const [editRecipe, setEditRecipe] = useState(meal.recipe || "");
+  const [editShoppingList, setEditShoppingList] = useState(meal.shoppingList || "");
   const [editDate, setEditDate] = useState(meal.date);
   const [editHealthScore, setEditHealthScore] = useState<number | "">(meal.healthScore || "");
   const [isUpdating, setIsUpdating] = useState(false);
@@ -56,8 +59,10 @@ export default function MealModal({ meal, onClose, onDelete, onUpdate }: MealMod
   // Prevent scrolling when modal is open
   useEffect(() => {
     document.body.style.overflow = "hidden";
+    document.body.classList.add("modal-open");
     return () => {
       document.body.style.overflow = "unset";
+      document.body.classList.remove("modal-open");
     };
   }, []);
 
@@ -75,6 +80,7 @@ export default function MealModal({ meal, onClose, onDelete, onUpdate }: MealMod
         description: editDescription,
         ingredients: editIngredients,
         recipe: editRecipe,
+        shoppingList: editShoppingList,
         date: editDate,
         healthScore: editHealthScore === "" ? null : Number(editHealthScore),
       };
@@ -100,21 +106,37 @@ export default function MealModal({ meal, onClose, onDelete, onUpdate }: MealMod
   };
 
   const handleCopy = () => {
-    const text = `🍴 ${meal.title}\n\n📝 Beschrijving:\n${meal.description}\n\n🥕 Ingrediënten:\n${meal.ingredients || "Geen ingrediënten opgegeven"}\n\n👨‍🍳 Bereiding:\n${meal.recipe || "Geen bereidingswijze opgegeven"}\n\n📅 Datum: ${new Date(meal.date).toLocaleDateString('nl-NL')}\n⭐ Gezondheidsscore: ${meal.healthScore || "N/A"}`;
+    const text = `🍴 ${meal.title}\n\n📝 Beschrijving:\n${meal.description}\n\n🥕 Ingrediënten:\n${meal.ingredients || "Geen ingrediënten opgegeven"}\n\n👨‍🍳 Bereiding:\n${meal.recipe || "Geen bereidingswijze opgegeven"}\n\n🛒 Boodschappenlijst (AH - 2 pers):\n${meal.shoppingList || "Geen boodschappenlijst opgegeven"}\n\n📅 Datum: ${new Date(meal.date).toLocaleDateString('nl-NL')}\n⭐ Gezondheidsscore: ${meal.healthScore || "N/A"}`;
     navigator.clipboard.writeText(text);
     toast.success("Tekst gekopieerd naar klembord");
   };
 
+  const handleCopyShoppingList = () => {
+    if (!meal.shoppingList) {
+      toast.error("Geen boodschappenlijst beschikbaar");
+      return;
+    }
+    const text = `🛒 Boodschappenlijst voor ${meal.title} (2 personen):\n\n${meal.shoppingList}`;
+    navigator.clipboard.writeText(text);
+    toast.success("Boodschappenlijst gekopieerd!");
+  };
+
   const handleShare = async () => {
+    const shareData = {
+      title: meal.title,
+      text: `🍴 Bekijk deze maaltijd: ${meal.title}\n\n${meal.description}`,
+      url: window.location.href,
+    };
+
     if (navigator.share) {
       try {
-        await navigator.share({
-          title: meal.title,
-          text: `Check deze maaltijd: ${meal.title}`,
-          url: window.location.href,
-        });
+        await navigator.share(shareData);
+        toast.success("Gedeeld!");
       } catch (err) {
-        console.error("Share failed", err);
+        if ((err as Error).name !== 'AbortError') {
+          console.error("Share failed", err);
+          handleCopy();
+        }
       }
     } else {
       handleCopy();
@@ -188,10 +210,27 @@ export default function MealModal({ meal, onClose, onDelete, onUpdate }: MealMod
     }
   };
 
+  const handleCopySection = (title: string, content: string) => {
+    navigator.clipboard.writeText(content);
+    toast.success(`${title} gekopieerd naar klembord`);
+  };
+
+  const CopyButton = ({ title, content }: { title: string, content: string }) => (
+    <button 
+      onClick={() => handleCopySection(title, content)}
+      className="p-1.5 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 print:hidden"
+      title={`${title} kopiëren`}
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+      </svg>
+    </button>
+  );
+
   const isOwner = user && user.uid === meal.userId;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 print:p-0">
+  const modalContent = (
+    <div className="fixed inset-0 z-50 meal-modal-container flex items-center justify-center p-4 sm:p-6 print:relative print:block print:p-0 print:z-0">
       {/* Full Screen Image Overlay */}
       {isFullScreen && (
         <div className="fixed inset-0 z-[100] bg-black flex items-center justify-center animate-in fade-in duration-300">
@@ -236,18 +275,20 @@ export default function MealModal({ meal, onClose, onDelete, onUpdate }: MealMod
       {/* Modal Content */}
       <div 
         ref={modalRef}
-        className="relative bg-white dark:bg-slate-900 w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl flex flex-col print:shadow-none print:max-w-none print:max-h-none print:overflow-visible print:bg-white print:text-black print-only"
+        className="relative bg-white dark:bg-slate-900 w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl flex flex-col print:shadow-none print:max-w-none print:max-h-none print:overflow-visible print:bg-white print:text-black print:block print:static print-only"
       >
         {/* Header Image */}
-        <div className="relative h-64 sm:h-80 w-full shrink-0 print:h-96 group">
-          <Image 
-            src={meal.imageUrl} 
-            alt={meal.title} 
-            fill
-            className="object-cover print:relative print:block"
-            priority
-            unoptimized={true} // Helps with printing sometimes
-          />
+        <div className="relative h-64 sm:h-80 w-full shrink-0 print:h-auto print:w-full print:block print:shrink group">
+          <div className="relative w-full h-full print:h-64 print:overflow-hidden print:rounded-3xl">
+            <Image 
+              src={meal.imageUrl} 
+              alt={meal.title} 
+              fill
+              className="object-cover print:relative print:block print:!h-full print:!w-full"
+              priority
+              unoptimized={true} // Helps with printing sometimes
+            />
+          </div>
           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent print:hidden"></div>
           
           <div className="absolute top-4 right-4 flex gap-2 print:hidden">
@@ -271,233 +312,271 @@ export default function MealModal({ meal, onClose, onDelete, onUpdate }: MealMod
             </button>
           </div>
 
-          <div className="absolute bottom-0 left-0 p-6 sm:p-8 w-full print:relative print:p-0 print:mt-4 print:text-black">
+          <div className="absolute bottom-0 left-0 p-6 sm:p-8 w-full print:static print:p-0 print:mt-4 print:text-black">
             <h2 className="text-3xl sm:text-4xl font-bold text-white mb-2 drop-shadow-md print:text-black print:drop-shadow-none">
               {meal.title}
             </h2>
-            <div className="flex items-center gap-3 text-white/90 text-sm font-medium print:text-black">
+            <div className="flex items-center gap-3 text-white/90 text-sm font-medium print:text-black print:mb-4">
               <span className="bg-blue-600 px-2 py-0.5 rounded text-xs uppercase tracking-wider print:border print:border-black print:bg-transparent">
                 {meal.userEmail.split('@')[0]}
               </span>
-              <span>•</span>
-              <span>{new Date(meal.date).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
-              {meal.healthScore && (
-                 <span className={`px-2 py-0.5 rounded text-xs uppercase tracking-wider font-bold text-black ${
-                  meal.healthScore >= 7 ? 'bg-green-400' : 
-                  meal.healthScore >= 4 ? 'bg-yellow-400' : 
-                  'bg-red-400'
-                } print:border print:border-black print:bg-transparent`}>
-                  Score: {meal.healthScore}
-                </span>
-              )}
+              <span className="flex items-center gap-1.5">
+                <span className="opacity-60">📅</span> {meal.date}
+              </span>
             </div>
           </div>
         </div>
 
-        {/* Content */}
-        <div className="p-6 sm:p-8 space-y-8 flex-1 print:p-0 print:mt-8 print:block">
-          {isEditing ? (
-            <div className="space-y-6 animate-in fade-in duration-300">
-              <div>
-                <label className="block text-sm font-bold mb-2">Titel</label>
-                <input 
-                  type="text" 
-                  value={editTitle} 
-                  onChange={(e) => setEditTitle(e.target.value)}
-                  className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-bold mb-2">Datum</label>
-                <input 
-                  type="date" 
-                  value={editDate} 
-                  onChange={(e) => setEditDate(e.target.value)}
-                  className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-bold mb-2">Beschrijving</label>
-                <textarea 
-                  value={editDescription} 
-                  onChange={(e) => setEditDescription(e.target.value)}
-                  rows={4}
-                  className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
-                />
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-bold mb-2">🥕 Ingrediënten</label>
-                  <textarea 
-                    value={editIngredients} 
-                    onChange={(e) => setEditIngredients(e.target.value)}
-                    rows={6}
-                    placeholder="Eén ingrediënt per regel"
-                    className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-bold mb-2">👨‍🍳 Bereiding</label>
-                  <textarea 
-                    value={editRecipe} 
-                    onChange={(e) => setEditRecipe(e.target.value)}
-                    rows={6}
-                    className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
-                  />
-                </div>
-              </div>
-              <div>
-                <div className="flex justify-between items-center mb-3">
-                  <label className="text-sm font-bold">Gezondheidsscore: <span className={`ml-1 px-2 py-0.5 rounded text-xs font-bold text-black ${
-                    Number(editHealthScore) >= 7 ? 'bg-green-400' : 
-                    Number(editHealthScore) >= 4 ? 'bg-yellow-400' : 
-                    'bg-red-400'
-                  }`}>{editHealthScore || 5}</span></label>
-                </div>
-                <div className="px-1">
-                  <input 
-                    type="range" 
-                    min="1" 
-                    max="10"
-                    step="1"
-                    value={editHealthScore || 5} 
-                    onChange={(e) => setEditHealthScore(Number(e.target.value))}
-                    className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                  />
-                  <div className="flex justify-between mt-2 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-                    <span className="flex flex-col items-start">
-                      <span>Slecht</span>
-                      <span>(1)</span>
-                    </span>
-                    <span className="flex flex-col items-center">
-                      <span>Gemiddeld</span>
-                      <span>(5)</span>
-                    </span>
-                    <span className="flex flex-col items-end">
-                      <span>Gezond</span>
-                      <span>(10)</span>
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <>
-              {meal.description && (
-                <div className="print:break-inside-avoid">
-                  <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-2 flex items-center gap-2">
-                    📝 Beschrijving
-                  </h3>
-                  <p className="text-slate-600 dark:text-slate-300 leading-relaxed whitespace-pre-wrap">
-                    {meal.description}
-                  </p>
-                </div>
-              )}
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 print:block print:space-y-8">
-                {meal.ingredients && (
-                  <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-2xl print:bg-transparent print:p-0 print:border-t print:pt-4 print:break-inside-avoid">
-                    <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
-                      🥕 Ingrediënten
-                    </h3>
-                    <ul className="space-y-2 text-slate-600 dark:text-slate-300 text-sm">
-                      {meal.ingredients.split('\n').map((line, i) => (
-                        <li key={i} className="flex items-start gap-2">
-                          <span className="text-blue-500 mt-1 print:text-black">•</span>
-                          <span>{line}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {meal.recipe && (
-                  <div className="bg-blue-50 dark:bg-blue-900/10 p-6 rounded-2xl border border-blue-100 dark:border-blue-900/20 print:bg-transparent print:p-0 print:border-t print:pt-4 print:break-inside-avoid">
-                    <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-4 flex items-center gap-2">
-                      👨‍🍳 Bereiding
-                    </h3>
-                    <div className="space-y-4 text-slate-600 dark:text-slate-300 text-sm whitespace-pre-wrap">
-                      {meal.recipe}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* Actions Footer */}
-        <div className="p-4 sm:p-6 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 print:hidden">
-          {isEditing ? (
-            <div className="flex flex-wrap gap-3 justify-end">
+        <div className="p-6 sm:p-8 space-y-8 print:p-0 print:space-y-6">
+          {/* Action Buttons - Print Hidden */}
+          <div className="flex flex-wrap items-center justify-between gap-4 pb-6 border-b border-slate-100 dark:border-slate-800 print:hidden">
+            <div className="flex flex-wrap items-center gap-2">
               <button 
-                onClick={() => setIsEditing(false)}
-                className="flex-1 sm:flex-none px-4 py-2 rounded-xl font-bold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                disabled={isUpdating}
+                onClick={() => window.print()}
+                className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 px-4 py-2 rounded-xl font-bold transition-all"
               >
-                Annuleren
+                <span>🖨️</span> Print / PDF
               </button>
               <button 
-                onClick={handleUpdate}
-                disabled={isUpdating}
-                className="flex-[2] sm:flex-none px-6 py-2 rounded-xl font-bold bg-blue-600 text-white hover:bg-blue-700 shadow-md transition-all flex items-center justify-center gap-2"
+                onClick={handleCopyPicture}
+                className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 px-4 py-2 rounded-xl font-bold transition-all"
               >
-                {isUpdating ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                    Opslaan...
-                  </>
-                ) : (
-                  "✅ Wijzigingen opslaan"
-                )}
+                <span>🖼️</span> Kopieer Foto
               </button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-3 justify-end">
               <button 
-                onClick={onClose}
-                className="col-span-2 sm:flex-none px-4 py-3 sm:py-2 rounded-xl font-bold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors border border-slate-200 dark:border-slate-700"
+                onClick={() => {
+                  const text = `${meal.title}\n\nBeschrijving: ${meal.description}\n\nIngrediënten:\n${meal.ingredients || "Geen"}\n\nRecept:\n${meal.recipe || "Geen"}`;
+                  navigator.clipboard.writeText(text);
+                  toast.success("Gekopieerd naar klembord!");
+                }}
+                className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 px-4 py-2 rounded-xl font-bold transition-all"
               >
-                ✖ Sluiten
+                <span>📋</span> Kopieer Tekst
               </button>
               
               <button 
-                onClick={handleCopy}
-                className="px-4 py-3 sm:py-2 rounded-xl font-bold text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm transition-all text-sm"
+                onClick={handleShare}
+                className="flex items-center gap-2 bg-blue-100 dark:bg-blue-900/30 hover:bg-blue-200 dark:hover:bg-blue-800 text-blue-700 dark:text-blue-300 px-4 py-2 rounded-xl font-bold transition-all"
               >
-                📋 Copy Tekst
+                <span>🔗</span> Deel
               </button>
+              
+              {/* Shopping List Copy Button */}
+              {meal.shoppingList && (
+                <button 
+                  onClick={() => {
+                    const text = `🛒 Boodschappenlijst voor ${meal.title} (2 personen):\n\n${meal.shoppingList}`;
+                    navigator.clipboard.writeText(text);
+                    toast.success("Boodschappenlijst gekopieerd!");
+                  }}
+                  className="flex items-center gap-2 bg-orange-100 dark:bg-orange-900/30 hover:bg-orange-200 dark:hover:bg-orange-800 text-orange-700 dark:text-orange-300 px-4 py-2 rounded-xl font-bold transition-all"
+                >
+                  <span>🛒</span> Kopieer Lijst
+                </button>
+              )}
+            </div>
 
-              <button 
-                onClick={handleCopyPicture}
-                className="px-4 py-3 sm:py-2 rounded-xl font-bold text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm transition-all text-sm"
-              >
-                🖼️ Copy Foto
-              </button>
+            {isOwner && (
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={() => setIsEditing(!isEditing)}
+                  className="p-2.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-xl hover:bg-blue-100 dark:hover:bg-blue-800/50 transition-all"
+                  title="Bewerken"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                </button>
+                <button 
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="p-2.5 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-xl hover:bg-red-100 dark:hover:bg-red-900/50 transition-all"
+                  title="Verwijderen"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </button>
+              </div>
+            )}
+          </div>
 
-              <button 
-                onClick={handleDownloadPDF}
-                className="col-span-2 sm:flex-none px-4 py-3 sm:py-2 rounded-xl font-bold text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm transition-all flex items-center justify-center gap-2 text-sm"
-              >
-                📥 Download PDF
-              </button>
+          {/* Edit Mode / View Mode */}
+          {isEditing ? (
+            <div className="space-y-6 animate-in fade-in slide-in-from-top-4 duration-300">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-slate-500 dark:text-slate-400 ml-1">Titel</label>
+                  <input 
+                    type="text" 
+                    value={editTitle}
+                    onChange={(e) => setEditTitle(e.target.value)}
+                    className="input-field"
+                    placeholder="Naam van het gerecht"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-slate-500 dark:text-slate-400 ml-1">Datum</label>
+                  <input 
+                    type="date" 
+                    value={editDate}
+                    onChange={(e) => setEditDate(e.target.value)}
+                    className="input-field"
+                  />
+                </div>
+              </div>
 
-              {isOwner && (
-                <>
-                  <button 
-                    onClick={() => setIsEditing(true)}
-                    className="px-4 py-3 sm:py-2 rounded-xl font-bold text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 border border-slate-200 dark:border-slate-800 sm:border-transparent sm:hover:border-blue-200 transition-all text-sm"
-                  >
-                    ✏️ Wijzigen
-                  </button>
-                  
-                  <button 
-                    onClick={() => setShowDeleteConfirm(true)}
-                    className="px-4 py-3 sm:py-2 rounded-xl font-bold text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 border border-slate-200 dark:border-slate-800 sm:border-transparent sm:hover:border-red-200 transition-all text-sm"
-                  >
-                    🗑️ Verwijderen
-                  </button>
-                </>
+              <div className="space-y-2">
+                <label className="text-sm font-bold text-slate-500 dark:text-slate-400 ml-1">Beschrijving</label>
+                <textarea 
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  className="input-field min-h-[100px] py-3"
+                  placeholder="Wat voor lekkers is dit?"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-slate-500 dark:text-slate-400 ml-1">Ingrediënten</label>
+                  <textarea 
+                    value={editIngredients}
+                    onChange={(e) => setEditIngredients(e.target.value)}
+                    className="input-field min-h-[150px] py-3 font-mono text-sm"
+                    placeholder="Lijst met ingrediënten..."
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-slate-500 dark:text-slate-400 ml-1">Bereidingswijze</label>
+                  <textarea 
+                    value={editRecipe}
+                    onChange={(e) => setEditRecipe(e.target.value)}
+                    className="input-field min-h-[150px] py-3 font-mono text-sm"
+                    placeholder="Stap-voor-stap instructies..."
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-bold text-slate-500 dark:text-slate-400 ml-1">Boodschappenlijst (AH, 2 pers)</label>
+                <textarea 
+                  value={editShoppingList}
+                  onChange={(e) => setEditShoppingList(e.target.value)}
+                  className="input-field min-h-[100px] py-3 font-mono text-sm"
+                  placeholder="Groepeer per afdeling..."
+                />
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <button 
+                  onClick={handleUpdate}
+                  disabled={isUpdating}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl font-bold transition-all shadow-lg shadow-blue-200 dark:shadow-blue-900/20 disabled:opacity-50"
+                >
+                  {isUpdating ? "Bijwerken..." : "Wijzigingen opslaan"}
+                </button>
+                <button 
+                  onClick={() => setIsEditing(false)}
+                  className="px-8 py-4 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-2xl font-bold hover:bg-slate-200 dark:hover:bg-slate-700 transition-all"
+                >
+                  Annuleren
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-6 sm:space-y-10 animate-in fade-in duration-500 print:space-y-4">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 print:block">
+                {/* Left Column: Description & Ingredients */}
+                <div className="space-y-10 print:space-y-4">
+                  <section className="break-inside-avoid">
+                    <h3 className="text-xl font-bold mb-4 flex items-center gap-2 print:text-sm print:mb-1">
+                      <span>📝</span> Beschrijving
+                    </h3>
+                    <p className="text-slate-600 dark:text-slate-300 leading-relaxed text-lg print:text-xs">
+                      {meal.description}
+                    </p>
+                  </section>
+
+                  {meal.ingredients && (
+                    <section className="break-inside-avoid">
+                      <div className="flex items-center justify-between mb-4 print:mb-1">
+                        <h3 className="text-xl font-bold flex items-center gap-2 print:text-sm">
+                          <span>🥕</span> Ingrediënten
+                        </h3>
+                        <CopyButton title="Ingrediënten" content={meal.ingredients} />
+                      </div>
+                      <div className="bg-slate-50 dark:bg-slate-800/40 p-6 rounded-3xl border border-slate-100 dark:border-slate-800/50 print:p-0 print:bg-transparent print:border-none">
+                        <pre className="whitespace-pre-wrap font-sans text-slate-600 dark:text-slate-300 leading-relaxed print:text-[10pt]">
+                          {meal.ingredients}
+                        </pre>
+                      </div>
+                    </section>
+                  )}
+
+                  {/* Recipe only on detail page if it exists and fits better here on mobile, but let's keep it below Ingredients on desktop */}
+                  {meal.recipe && (
+                    <section className="break-inside-avoid lg:hidden print:hidden">
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-xl font-bold flex items-center gap-2">
+                          <span>👨‍🍳</span> Bereidingswijze
+                        </h3>
+                        <CopyButton title="Bereidingswijze" content={meal.recipe} />
+                      </div>
+                      <div className="bg-slate-50 dark:bg-slate-800/40 p-6 rounded-3xl border border-slate-100 dark:border-slate-800/50">
+                        <pre className="whitespace-pre-wrap font-sans text-slate-600 dark:text-slate-300 leading-relaxed">
+                          {meal.recipe}
+                        </pre>
+                      </div>
+                    </section>
+                  )}
+                </div>
+
+                {/* Right Column: Health Score & Shopping List */}
+                <div className="space-y-8 print:space-y-4">
+                  {meal.healthScore && (
+                    <section className="bg-blue-50/50 dark:bg-blue-900/10 p-6 sm:p-8 rounded-3xl border border-blue-100/50 dark:border-blue-800/30 break-inside-avoid print:p-0 print:bg-transparent print:border-none">
+                      <h3 className="text-lg font-bold text-blue-900 dark:text-blue-100 mb-4 flex items-center gap-2 print:text-sm print:mb-0">
+                        <span>⭐</span> Health Score: <span className="text-2xl print:text-sm font-black text-blue-600">{meal.healthScore}/10</span>
+                      </h3>
+                      <div className="mt-4 w-full bg-blue-200/50 dark:bg-blue-800/50 h-2.5 rounded-full overflow-hidden print:hidden">
+                        <div 
+                          className="h-full bg-blue-600 transition-all duration-1000 shadow-[0_0_10px_rgba(37,99,235,0.3)]" 
+                          style={{ width: `${meal.healthScore * 10}%` }}
+                        ></div>
+                      </div>
+                    </section>
+                  )}
+
+                  {meal.shoppingList && (
+                    <section className="bg-orange-50/50 dark:bg-orange-900/10 p-6 sm:p-8 rounded-3xl border border-orange-100/50 dark:border-orange-800/30 break-inside-avoid print:p-3 print:bg-slate-50 print:border print:border-slate-200 print:rounded-xl">
+                      <div className="flex items-center justify-between mb-4 print:mb-1">
+                        <h3 className="text-lg font-bold text-orange-900 dark:text-orange-100 flex items-center gap-2 print:text-sm">
+                          <span>🛒</span> Boodschappen (AH, 2 pers)
+                        </h3>
+                        <CopyButton title="Boodschappenlijst" content={meal.shoppingList} />
+                      </div>
+                      <pre className="whitespace-pre-wrap font-sans text-orange-800/80 dark:text-orange-200/80 leading-relaxed text-sm print:text-[9pt]">
+                        {meal.shoppingList}
+                      </pre>
+                    </section>
+                  )}
+                </div>
+              </div>
+
+              {/* Recipe Section (Full Width below the grid on Desktop) */}
+              {meal.recipe && (
+                <section className="break-inside-avoid hidden lg:block print:block print:mt-6">
+                  <div className="flex items-center justify-between mb-4 print:mb-1">
+                    <h3 className="text-xl font-bold flex items-center gap-2 print:text-sm">
+                      <span>👨‍🍳</span> Bereidingswijze
+                    </h3>
+                    <CopyButton title="Bereidingswijze" content={meal.recipe} />
+                  </div>
+                  <div className="bg-slate-50 dark:bg-slate-800/40 p-8 rounded-3xl border border-slate-100 dark:border-slate-800/50 print:p-0 print:bg-transparent print:border-none">
+                    <pre className="whitespace-pre-wrap font-sans text-slate-600 dark:text-slate-300 leading-relaxed text-lg print:text-[10pt]">
+                      {meal.recipe}
+                    </pre>
+                  </div>
+                </section>
               )}
             </div>
           )}
@@ -505,4 +584,8 @@ export default function MealModal({ meal, onClose, onDelete, onUpdate }: MealMod
       </div>
     </div>
   );
+
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(modalContent, document.body);
 }
