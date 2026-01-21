@@ -6,6 +6,7 @@ import Login from "@/components/Login";
 import AddMealForm from "@/components/AddMealForm";
 import MealFeed from "@/components/MealFeed";
 import ThemeToggle from "@/components/ThemeToggle";
+import UpdateNotification from "@/components/UpdateNotification";
 
 export const maxDuration = 25; // Verhoog timeout voor alle server acties op deze pagina
 
@@ -198,6 +199,12 @@ export default function Home() {
           </div>
         </div>
       )}
+
+      <footer className="mt-auto py-8 text-center text-slate-400 dark:text-slate-500 text-sm border-t border-slate-100 dark:border-slate-800/50">
+        <p>© 2026 MaaltijdPlus • Jouw gezondheid, onze passie • v 1.260121.1</p>
+      </footer>
+
+      <UpdateNotification />
     </div>
   );
 }
