@@ -4,6 +4,8 @@ import { createContext, useContext, useEffect, useState, ReactNode } from "react
 import { 
   User, 
   signInWithPopup, 
+  signInWithRedirect,
+  getRedirectResult,
   signOut, 
   onAuthStateChanged, 
   setPersistence, 
@@ -32,6 +34,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Check for redirect result when the app loads
+    const checkRedirect = async () => {
+      try {
+        const result = await getRedirectResult(auth);
+        if (result?.user) {
+          await checkAccess(result.user);
+        }
+      } catch (error) {
+        console.error("Redirect login error:", error);
+        toast.error("Fout bij inloggen via redirect.");
+      }
+    };
+    checkRedirect();
+
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
         await checkAccess(currentUser);
@@ -103,8 +119,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     try {
       await setPersistence(auth, browserLocalPersistence);
-      await signInWithPopup(auth, googleProvider);
-      // checkAccess will be triggered by onAuthStateChanged
+      
+      // Check if we are on iOS or in a PWA (standalone mode)
+      const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone;
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
+      
+      if (isStandalone || isIOS) {
+        await signInWithRedirect(auth, googleProvider);
+      } else {
+        await signInWithPopup(auth, googleProvider);
+      }
+      // checkAccess will be triggered by onAuthStateChanged or getRedirectResult
     } catch (error: unknown) {
       console.error("Login failed", error);
       toast.error((error as Error).message || "Login failed");

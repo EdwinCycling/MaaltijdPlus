@@ -72,10 +72,19 @@ export async function analyzeMeal(imageBase64: string, mimeType: string) {
     const response = await result.response;
     const text = response.text();
 
+    if (!text) {
+      throw new Error("AI gaf een lege reactie terug.");
+    }
+
     // Clean up markdown code blocks if present
     const cleanText = text.replace(/```json\n?|\n?```/g, "").trim();
     
-    return JSON.parse(cleanText);
+    try {
+      return JSON.parse(cleanText);
+    } catch (parseError) {
+      console.error("Failed to parse AI response as JSON:", text);
+      throw new Error("AI reactie was geen geldige JSON.");
+    }
   } catch (error: any) {
     console.error("Gemini analysis failed:", error);
     

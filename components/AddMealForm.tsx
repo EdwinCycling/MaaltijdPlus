@@ -97,12 +97,23 @@ export default function AddMealForm({ onMealAdded, onCancel }: { onMealAdded: ()
   };
 
   const triggerAnalyze = async () => {
-    if (!imageFile || !imagePreview) return;
+    if (!imageFile) return;
     setIsAnalyzing(true);
     setAiResult(null);
     try {
-      const base64Data = imagePreview.split(",")[1];
-      const mimeType = imageFile.type;
+      // Comprimeer de foto voordat we deze naar de AI sturen
+      const compressedBlob = await compressImage(imageFile);
+      
+      // Convert Blob naar Base64 voor de server action
+      const reader = new FileReader();
+      const base64Promise = new Promise<string>((resolve) => {
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.readAsDataURL(compressedBlob);
+      });
+      const compressedBase64 = await base64Promise;
+      
+      const base64Data = compressedBase64.split(",")[1];
+      const mimeType = "image/jpeg"; // compressImage levert altijd JPEG
       const result = await analyzeMeal(base64Data, mimeType);
       
       if (!result.isFood) {
