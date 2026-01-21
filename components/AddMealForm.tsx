@@ -42,8 +42,8 @@ export default function AddMealForm({ onMealAdded, onCancel }: { onMealAdded: ()
       img.src = URL.createObjectURL(file);
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 1200;
-        const MAX_HEIGHT = 1200;
+        const MAX_WIDTH = 800;
+        const MAX_HEIGHT = 800;
         let width = img.width;
         let height = img.height;
 
@@ -70,7 +70,7 @@ export default function AddMealForm({ onMealAdded, onCancel }: { onMealAdded: ()
           } else {
             reject(new Error('Canvas to Blob failed'));
           }
-        }, 'image/jpeg', 0.8); // 80% quality JPEG
+        }, 'image/jpeg', 0.7); // 70% quality JPEG for faster processing
         URL.revokeObjectURL(img.src);
       };
       img.onerror = (err: string | Event) => reject(err);

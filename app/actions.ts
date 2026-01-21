@@ -8,6 +8,8 @@ const genAI = new GoogleGenerativeAI(apiKey || "");
 // Server-side rate limiting for AI analysis (prevent script abuse)
 const analysisRateLimit = new Map<string, { count: number; timestamp: number }>();
 
+export const maxDuration = 25; // Verhoog naar 25 seconden voor Netlify/Vercel
+
 export async function analyzeMeal(imageBase64: string, mimeType: string) {
   // Simple IP-based rate limiting for the server action
   // In server actions, we get the IP from headers
@@ -90,13 +92,17 @@ export async function analyzeMeal(imageBase64: string, mimeType: string) {
     
     // Provide more specific error messages
     if (error.status === 429) {
-      throw new Error("AI limiet bereikt. Probeer het over een minuutje weer.");
+      throw new Error("AI limiet bereikt (Rate limit). Probeer het over een minuutje weer.");
     }
     
     if (error.message?.includes("API key")) {
-      throw new Error("Ongeldige API key. Controleer je instellingen.");
+      throw new Error("Configuratie fout: Ongeldige API key.");
     }
 
-    throw new Error("Analyse mislukt: " + (error.message || "onbekende fout"));
+    if (error.name === 'AbortError' || error.message?.includes('timeout')) {
+      throw new Error("De analyse duurde te lang (Timeout). Probeer het met een kleinere foto.");
+    }
+
+    throw new Error("Server Fout: " + (error.message || "De server gaf een onverwachte reactie. Controleer je internetverbinding en probeer het opnieuw."));
   }
 }
