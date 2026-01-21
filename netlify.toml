@@ -2,7 +2,7 @@
   command = "npm run build"
   publish = ".next"
 
-[functions]
+[functions."**"]
   timeout = 26
 
 [[plugins]]

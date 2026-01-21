@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 
-const APP_VERSION = "1.260121.2";
+const APP_VERSION = "1.260121.3";
 
 export default function UpdateNotification() {
   const [showUpdate, setShowUpdate] = useState(false);
