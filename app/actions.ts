@@ -8,8 +8,6 @@ const genAI = new GoogleGenerativeAI(apiKey || "");
 // Server-side rate limiting for AI analysis (prevent script abuse)
 const analysisRateLimit = new Map<string, { count: number; timestamp: number }>();
 
-export const maxDuration = 25; // Verhoog naar 25 seconden voor Netlify/Vercel
-
 export async function analyzeMeal(imageBase64: string, mimeType: string) {
   // Simple IP-based rate limiting for the server action
   // In server actions, we get the IP from headers

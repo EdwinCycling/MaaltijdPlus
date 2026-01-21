@@ -7,6 +7,8 @@ import AddMealForm from "@/components/AddMealForm";
 import MealFeed from "@/components/MealFeed";
 import ThemeToggle from "@/components/ThemeToggle";
 
+export const maxDuration = 25; // Verhoog timeout voor alle server acties op deze pagina
+
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
