@@ -71,7 +71,7 @@ export default function AddMealForm({ onMealAdded, onCancel }: { onMealAdded: ()
         }, 'image/jpeg', 0.8); // 80% quality JPEG
         URL.revokeObjectURL(img.src);
       };
-      img.onerror = (err) => reject(err);
+      img.onerror = (err: string | Event) => reject(err);
     });
   };
 
@@ -199,7 +199,7 @@ export default function AddMealForm({ onMealAdded, onCancel }: { onMealAdded: ()
       setDescription("");
       setIngredients("");
       setRecipe("");
-      setHealthScore("");
+      setHealthScore(5);
       setAiResult(null);
       onMealAdded();
     } catch (error) {
