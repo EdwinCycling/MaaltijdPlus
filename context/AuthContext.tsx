@@ -37,21 +37,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Check for redirect result when the app loads
     const checkRedirect = async () => {
       try {
+        // Alleen checken als we echt in een redirect flow zitten
+        // Firebase onAuthStateChanged handelt de rest af
         const result = await getRedirectResult(auth);
         if (result?.user) {
+          console.log("Redirect login succesvol voor:", result.user.email);
           await checkAccess(result.user);
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error("Redirect login error:", error);
-        toast.error("Fout bij inloggen via redirect.");
+        // Voorkom oneindige loops door alleen te toasten bij echte fouten
+        if (error.code !== 'auth/popup-closed-by-user' && error.code !== 'auth/cancelled-popup-request') {
+          toast.error("Fout bij inloggen: " + (error.message || "onbekende fout"));
+        }
+        setLoading(false);
       }
     };
+    
     checkRedirect();
 
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
+        console.log("Auth state change: gebruiker ingelogd", currentUser.email);
         await checkAccess(currentUser);
       } else {
+        console.log("Auth state change: geen gebruiker");
         setUser(null);
         setLoading(false);
       }
@@ -63,23 +73,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const checkAccess = async (currentUser: User) => {
     try {
       const email = currentUser.email;
-      if (!email) throw new Error("No email found");
+      if (!email) throw new Error("Geen e-mailadres gevonden bij Google account");
+
+      console.log("Checking access for:", email);
 
       // 1. Check Hardcoded List
       if (HARDCODED_ALLOW_LIST.includes(email)) {
+        console.log("Access granted via hardcoded list");
         setUser(currentUser);
         setLoading(false);
         return;
       }
 
       // 2. Check Firestore Whitelist
-      // Assuming 'users_whitelist' collection with documents where email field matches, or document ID is email
-      // User requirement: users_whitelist: { email: string }
       try {
         const q = query(collection(db, "users_whitelist"), where("email", "==", email));
         const querySnapshot = await getDocs(q);
 
         if (!querySnapshot.empty) {
+          console.log("Access granted via Firestore query");
           setUser(currentUser);
         } else {
           // Extra check: see if doc ID is the email
@@ -88,28 +100,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const docSnap = await getDoc(docRef);
           
           if (docSnap.exists()) {
+            console.log("Access granted via Firestore doc ID");
             setUser(currentUser);
           } else {
+            console.warn("Access denied: email not in whitelist");
             await signOut(auth);
             setUser(null);
-            toast.error("Toegang geweigerd: Je staat niet op de toegestane lijst.");
+            toast.error(`Toegang geweigerd: ${email} staat niet op de lijst.`);
           }
         }
       } catch (dbError: any) {
-        console.error("Database access error during whitelist check:", dbError);
-        if (dbError.code === "permission-denied") {
-          toast.error("Database permissie fout. Controleer of de 'users_whitelist' collectie leesbaar is.");
-        }
-        throw dbError; // Re-throw to be caught by the outer catch
+        console.error("Database access error:", dbError);
+        // Bij permissie-fouten (bijv. als de gebruiker nog niet is geautoriseerd om te lezen)
+        // proberen we het toch als succes te zien als Firebase Auth zegt dat ze ingelogd zijn?
+        // Nee, we houden de whitelist aan voor veiligheid.
+        await signOut(auth);
+        setUser(null);
+        toast.error("Fout bij controleren toegangslijst.");
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Access check failed:", error);
       await signOut(auth);
       setUser(null);
-      // Only show general error if it wasn't already handled by the specific dbError toast
-      if (!(error as any).code || (error as any).code !== "permission-denied") {
-        toast.error("Authenticatie mislukt of geen toegang.");
-      }
+      toast.error(error.message || "Authenticatie mislukt.");
     } finally {
       setLoading(false);
     }
