@@ -57,17 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const email = currentUser.email;
       if (!email) throw new Error("Geen e-mailadres gevonden bij Google account");
 
-      const log = (msg: string) => {
-        const logs = JSON.parse(sessionStorage.getItem("auth_logs") || "[]");
-        logs.push(`${new Date().toISOString()}: ${msg}`);
-        sessionStorage.setItem("auth_logs", JSON.stringify(logs.slice(-20)));
-        console.log(msg);
-      };
-
-      log(`Checking access for: ${email}`);
-
       if (HARDCODED_ALLOW_LIST.includes(email)) {
-        log("Access granted via hardcoded list");
         setUser(currentUser);
         setLoading(false);
         return;
@@ -78,7 +68,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const querySnapshot = await getDocs(q);
 
         if (!querySnapshot.empty) {
-          log("Access granted via Firestore query");
           setUser(currentUser);
         } else {
           const { doc, getDoc } = await import("firebase/firestore");
@@ -86,17 +75,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const docSnap = await getDoc(docRef);
           
           if (docSnap.exists()) {
-            log("Access granted via Firestore doc ID");
             setUser(currentUser);
           } else {
-            log(`Access denied: ${email} not in whitelist`);
             await signOut(auth);
             setUser(null);
             toast.error(`Toegang geweigerd: ${email} staat niet op de lijst.`);
           }
         }
       } catch (dbError: unknown) {
-        log(`Database access error: ${getErrorMessage(dbError)}`);
+        console.error("Database access error:", dbError);
         await signOut(auth);
         setUser(null);
         toast.error("Fout bij controleren toegangslijst.");
@@ -115,36 +102,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let unsubscribe = () => {};
     let isActive = true;
 
-    const log = (msg: string) => {
-      const logs = JSON.parse(sessionStorage.getItem("auth_logs") || "[]");
-      logs.push(`${new Date().toISOString()}: ${msg}`);
-      sessionStorage.setItem("auth_logs", JSON.stringify(logs.slice(-20)));
-      console.log(msg);
-    };
-
     const initializeAuth = async () => {
-      log(`Initializing Auth (Domain: ${auth.config.authDomain})...`);
       try {
-        await setPersistence(auth, getPreferredPersistence());
-        log("Persistence set to LOCAL");
+        await setPersistence(auth, browserLocalPersistence);
       } catch (error) {
-        log(`Persistence error: ${getErrorMessage(error)}`);
+        console.error("Persistence error:", error);
       }
 
       try {
         // Small delay to ensure browser storage is ready
         await new Promise(resolve => setTimeout(resolve, 500));
         
-        log("Checking redirect result...");
         const result = await getRedirectResult(auth);
         if (result?.user) {
-          log(`Redirect result found: ${result.user.email}`);
           await checkAccess(result.user);
-        } else {
-          log("No redirect result found");
         }
       } catch (error: unknown) {
-        log(`Redirect error: ${getErrorMessage(error)}`);
+        console.error("Redirect login error:", error);
         const errorCode = getErrorCode(error);
         if (errorCode !== "auth/popup-closed-by-user" && errorCode !== "auth/cancelled-popup-request") {
           toast.error("Fout bij inloggen: " + (getErrorMessage(error) || "onbekende fout"));
@@ -156,10 +130,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
         if (currentUser) {
-          log(`Auth state changed: user logged in as ${currentUser.email}`);
           await checkAccess(currentUser);
         } else {
-          log("Auth state changed: no user");
           if (isActive) {
             setUser(null);
             setLoading(false);
@@ -178,45 +150,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInWithGoogle = async () => {
     setLoading(true);
-    const log = (msg: string) => {
-      const logs = JSON.parse(sessionStorage.getItem("auth_logs") || "[]");
-      logs.push(`${new Date().toISOString()}: ${msg}`);
-      sessionStorage.setItem("auth_logs", JSON.stringify(logs.slice(-20)));
-      console.log(msg);
-    };
-
-    log("Starting Google Sign-In process...");
     try {
       const isStandalone = window.matchMedia("(display-mode: standalone)").matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
       const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !("MSStream" in window);
       const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
       
-      log(`Device info: isStandalone=${isStandalone}, isIOS=${isIOS}, isMobile=${isMobile}`);
-      
       await setPersistence(auth, browserLocalPersistence);
-      log("Persistence set to LOCAL");
       
       // On iOS Chrome/Safari, popups often work better than redirects unless in PWA mode
       if (isIOS && !isStandalone) {
-        log("iOS detected: Trying signInWithPopup first...");
         try {
           await signInWithPopup(auth, googleProvider);
-          log("Popup login successful");
           return;
         } catch (popupError: any) {
-          log(`Popup failed or blocked: ${getErrorMessage(popupError)}. Falling back to redirect...`);
-          // If popup is blocked or fails, fall back to redirect
+          console.warn("Popup failed or blocked, falling back to redirect:", popupError);
           await signInWithRedirect(auth, googleProvider);
         }
       } else if (isStandalone || isMobile) {
-        log("Mobile/PWA detected: Using signInWithRedirect");
         await signInWithRedirect(auth, googleProvider);
       } else {
-        log("Desktop detected: Using signInWithPopup");
         await signInWithPopup(auth, googleProvider);
       }
     } catch (error: unknown) {
-      log(`Login error: ${getErrorMessage(error)}`);
+      console.error("Login failed:", error);
       const errorMessage = getErrorMessage(error);
       const errorCode = getErrorCode(error);
       toast.error(`Login failed (${errorCode}): ${errorMessage}`);
