@@ -81,26 +81,29 @@ export async function analyzeMeal(imageBase64: string, mimeType: string) {
     
     try {
       return JSON.parse(cleanText);
-    } catch (parseError) {
+    } catch {
       console.error("Failed to parse AI response as JSON:", text);
       throw new Error("AI reactie was geen geldige JSON.");
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Gemini analysis failed:", error);
     
-    // Provide more specific error messages
-    if (error.status === 429) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorName = error instanceof Error ? error.name : undefined;
+    const errorStatus = typeof error === "object" && error && "status" in error ? (error as { status?: unknown }).status : undefined;
+
+    if (errorStatus === 429) {
       throw new Error("AI limiet bereikt (Rate limit). Probeer het over een minuutje weer.");
     }
     
-    if (error.message?.includes("API key")) {
+    if (errorMessage.includes("API key")) {
       throw new Error("Configuratie fout: Ongeldige API key.");
     }
 
-    if (error.name === 'AbortError' || error.message?.includes('timeout')) {
+    if (errorName === "AbortError" || errorMessage.includes("timeout")) {
       throw new Error("De analyse duurde te lang (Timeout). Probeer het met een kleinere foto.");
     }
 
-    throw new Error("Server Fout: " + (error.message || "De server gaf een onverwachte reactie. Controleer je internetverbinding en probeer het opnieuw."));
+    throw new Error("Server Fout: " + (errorMessage || "De server gaf een onverwachte reactie. Controleer je internetverbinding en probeer het opnieuw."));
   }
 }

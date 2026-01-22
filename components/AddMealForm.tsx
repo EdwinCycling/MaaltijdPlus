@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, ChangeEvent, useEffect } from "react";
+import NextImage from "next/image";
 import { useAuth } from "@/context/AuthContext";
 import { db, storage } from "@/lib/firebase";
 import { collection, addDoc, serverTimestamp, query, where, getDocs } from "firebase/firestore";
@@ -38,10 +39,10 @@ export default function AddMealForm({ onMealAdded, onCancel }: { onMealAdded: ()
 
   const compressImage = async (file: File): Promise<Blob> => {
     return new Promise((resolve, reject) => {
-      const img = new (window as any).Image();
+      const img = new window.Image();
       img.src = URL.createObjectURL(file);
       img.onload = () => {
-        const canvas = document.createElement('canvas');
+        const canvas = document.createElement("canvas");
         const MAX_WIDTH = 800;
         const MAX_HEIGHT = 800;
         let width = img.width;
@@ -61,19 +62,19 @@ export default function AddMealForm({ onMealAdded, onCancel }: { onMealAdded: ()
 
         canvas.width = width;
         canvas.height = height;
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext("2d");
         ctx?.drawImage(img, 0, 0, width, height);
         
         canvas.toBlob((blob) => {
           if (blob) {
             resolve(blob);
           } else {
-            reject(new Error('Canvas to Blob failed'));
+            reject(new Error("Canvas to Blob failed"));
           }
-        }, 'image/jpeg', 0.7); // 70% quality JPEG for faster processing
+        }, "image/jpeg", 0.7);
         URL.revokeObjectURL(img.src);
       };
-      img.onerror = (err: string | Event) => reject(err);
+      img.onerror = () => reject(new Error("Image load failed"));
     });
   };
 
@@ -133,7 +134,7 @@ export default function AddMealForm({ onMealAdded, onCancel }: { onMealAdded: ()
         
         toast.success("Analyse voltooid en velden ingevuld!");
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(error);
       const errorMessage = error instanceof Error ? error.message : "Analyse mislukt";
       toast.error(errorMessage);
@@ -251,7 +252,7 @@ export default function AddMealForm({ onMealAdded, onCancel }: { onMealAdded: ()
           >
             {imagePreview ? (
               <>
-                <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" />
+                <NextImage src={imagePreview} alt="Preview" fill sizes="100vw" className="object-cover" unoptimized />
                 <div className="absolute inset-0 bg-black/40 opacity-0 hover:opacity-100 flex items-center justify-center transition-opacity">
                   <p className="text-white font-medium">Klik om te wijzigen</p>
                 </div>

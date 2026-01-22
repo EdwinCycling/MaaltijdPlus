@@ -8,6 +8,11 @@ const nextConfig: NextConfig = {
         hostname: "firebasestorage.googleapis.com",
         pathname: "/**",
       },
+      {
+        protocol: "https",
+        hostname: "www.gstatic.com",
+        pathname: "/**",
+      },
     ],
   },
   async headers() {

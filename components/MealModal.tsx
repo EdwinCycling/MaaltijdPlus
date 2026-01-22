@@ -2,10 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import Image from "next/image";
+import NextImage from "next/image";
 import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase";
-import { doc, deleteDoc, updateDoc } from "firebase/firestore";
+import { doc, deleteDoc, updateDoc, Timestamp } from "firebase/firestore";
 import toast from "react-hot-toast";
 import ConfirmModal from "./ConfirmModal";
 
@@ -21,7 +21,7 @@ interface Meal {
   shoppingList?: string;
   date: string;
   healthScore?: number;
-  createdAt: any;
+  createdAt: Timestamp | string | null;
 }
 
 interface MealModalProps {
@@ -42,7 +42,7 @@ export default function MealModal({ meal, onClose, onDelete, onUpdate }: MealMod
   const [editRecipe, setEditRecipe] = useState(meal.recipe || "");
   const [editShoppingList, setEditShoppingList] = useState(meal.shoppingList || "");
   const [editDate, setEditDate] = useState(meal.date);
-  const [editHealthScore, setEditHealthScore] = useState<number | "">(meal.healthScore || "");
+  const [editHealthScore] = useState<number | "">(meal.healthScore || "");
   const [isUpdating, setIsUpdating] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isFullScreen, setIsFullScreen] = useState(false);
@@ -111,16 +111,6 @@ export default function MealModal({ meal, onClose, onDelete, onUpdate }: MealMod
     toast.success("Tekst gekopieerd naar klembord");
   };
 
-  const handleCopyShoppingList = () => {
-    if (!meal.shoppingList) {
-      toast.error("Geen boodschappenlijst beschikbaar");
-      return;
-    }
-    const text = `🛒 Boodschappenlijst voor ${meal.title} (2 personen):\n\n${meal.shoppingList}`;
-    navigator.clipboard.writeText(text);
-    toast.success("Boodschappenlijst gekopieerd!");
-  };
-
   const handleShare = async () => {
     const shareData = {
       title: meal.title,
@@ -143,15 +133,6 @@ export default function MealModal({ meal, onClose, onDelete, onUpdate }: MealMod
     }
   };
 
-  const handlePrint = () => {
-    window.print();
-  };
-
-  const handleDownloadPDF = () => {
-    // For now, we use window.print() but we can style it better
-    window.print();
-  };
-
   const handleCopyPicture = async () => {
     try {
       // Use proxy to avoid CORS issues
@@ -165,7 +146,7 @@ export default function MealModal({ meal, onClose, onDelete, onUpdate }: MealMod
       let finalBlob = blob;
       
       if (blob.type !== 'image/png') {
-        const img = new (window as any).Image();
+          const img = new window.Image();
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         
@@ -243,7 +224,7 @@ export default function MealModal({ meal, onClose, onDelete, onUpdate }: MealMod
             </svg>
           </button>
           <div className="relative w-full h-full p-4 sm:p-12">
-            <Image 
+            <NextImage 
               src={meal.imageUrl} 
               alt={meal.title} 
               fill
@@ -280,13 +261,13 @@ export default function MealModal({ meal, onClose, onDelete, onUpdate }: MealMod
         {/* Header Image */}
         <div className="relative h-64 sm:h-80 w-full shrink-0 print:h-auto print:w-full print:block print:shrink group">
           <div className="relative w-full h-full print:h-64 print:overflow-hidden print:rounded-3xl">
-            <Image 
+            <NextImage 
               src={meal.imageUrl} 
               alt={meal.title} 
               fill
               className="object-cover print:relative print:block print:!h-full print:!w-full"
               priority
-              unoptimized={true} // Helps with printing sometimes
+              unoptimized
             />
           </div>
           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent print:hidden"></div>

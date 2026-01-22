@@ -1,18 +1,12 @@
 "use client";
 
 import { useTheme } from "@/context/ThemeContext";
-import { useEffect, useState } from "react";
 
 export default function ThemeToggle() {
   const { theme, toggleTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
+  const isClient = typeof window !== "undefined";
 
-  // Avoid hydration mismatch
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  if (!mounted) {
+  if (!isClient) {
     return <div className="w-[60px] h-[34px]" />;
   }
 

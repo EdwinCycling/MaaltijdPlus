@@ -7,27 +7,10 @@ const APP_VERSION = "1.260121.3";
 export default function UpdateNotification() {
   const [showUpdate, setShowUpdate] = useState(false);
 
-  useEffect(() => {
-    // Check version immediately on mount
-    checkVersion();
-
-    // Check version every 5 minutes
-    const interval = setInterval(checkVersion, 5 * 60 * 1000);
-
-    // Also check when window gets focus
-    window.addEventListener("focus", checkVersion);
-
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener("focus", checkVersion);
-    };
-  }, []);
-
   const checkVersion = async () => {
     try {
-      // Use a cache-busting query parameter
       const response = await fetch(`/version.json?t=${Date.now()}`, {
-        cache: 'no-store'
+        cache: "no-store",
       });
       if (response.ok) {
         const data = await response.json();
@@ -40,8 +23,26 @@ export default function UpdateNotification() {
     }
   };
 
+  useEffect(() => {
+    const handleFocus = () => {
+      void checkVersion();
+    };
+
+    const timeoutId = window.setTimeout(() => {
+      void checkVersion();
+    }, 0);
+    const interval = window.setInterval(checkVersion, 5 * 60 * 1000);
+
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      clearTimeout(timeoutId);
+      clearInterval(interval);
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, []);
+
   const handleUpdate = () => {
-    // Force reload from server
     window.location.reload();
   };
 

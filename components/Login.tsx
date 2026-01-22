@@ -1,6 +1,7 @@
 "use client";
 
 import { useAuth } from "@/context/AuthContext";
+import Image from "next/image";
 
 export default function Login() {
   const { signInWithGoogle, loading } = useAuth();
@@ -34,7 +35,7 @@ export default function Login() {
             {loading ? (
               <div className="animate-spin h-6 w-6 border-3 border-slate-300 border-t-blue-600 rounded-full" />
             ) : (
-              <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-6 h-6" />
+              <Image src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" width={24} height={24} />
             )}
             {loading ? "Inloggen..." : "Start met Google"}
           </button>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase";
 import { collection, query, orderBy, getDocs, Timestamp } from "firebase/firestore";
@@ -19,7 +19,7 @@ interface Meal {
   shoppingList?: string;
   date: string;
   healthScore?: number;
-  createdAt: Timestamp;
+  createdAt: Timestamp | string | null;
 }
 
 type SortField = 'date' | 'user' | 'score';
@@ -37,12 +37,12 @@ export default function MealFeed({ refreshTrigger }: { refreshTrigger: number })
   const [sortField, setSortField] = useState<SortField>('date');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
-  useEffect(() => {
-    fetchMeals();
-  }, [refreshTrigger]);
-
-  const fetchMeals = async () => {
-    if (!user) return;
+  const fetchMeals = useCallback(async () => {
+    if (!user) {
+      setMeals([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const mealsRef = collection(db, "meals");
@@ -58,7 +58,11 @@ export default function MealFeed({ refreshTrigger }: { refreshTrigger: number })
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
+
+  useEffect(() => {
+    fetchMeals();
+  }, [fetchMeals, refreshTrigger]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -103,10 +107,6 @@ export default function MealFeed({ refreshTrigger }: { refreshTrigger: number })
   });
 
   const displayedMeals = getSortedMeals(filteredMeals);
-
-  const handleMealDelete = (id: string) => {
-    setMeals(prev => prev.filter(m => m.id !== id));
-  };
 
   return (
     <div className="space-y-6 print:hidden">
