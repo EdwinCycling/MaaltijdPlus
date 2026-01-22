@@ -48,9 +48,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const getPreferredPersistence = () => {
-    const isStandalone = window.matchMedia("(display-mode: standalone)").matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !("MSStream" in window);
-    return isStandalone || isIOS ? browserSessionPersistence : browserLocalPersistence;
+    // Force local persistence for better reliability across redirects on mobile
+    return browserLocalPersistence;
   };
 
   const checkAccess = useCallback(async (currentUser: User) => {
@@ -58,10 +57,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const email = currentUser.email;
       if (!email) throw new Error("Geen e-mailadres gevonden bij Google account");
 
-      console.log("Checking access for:", email);
+      const log = (msg: string) => {
+        const logs = JSON.parse(sessionStorage.getItem("auth_logs") || "[]");
+        logs.push(`${new Date().toISOString()}: ${msg}`);
+        sessionStorage.setItem("auth_logs", JSON.stringify(logs.slice(-20)));
+        console.log(msg);
+      };
+
+      log(`Checking access for: ${email}`);
 
       if (HARDCODED_ALLOW_LIST.includes(email)) {
-        console.log("Access granted via hardcoded list");
+        log("Access granted via hardcoded list");
         setUser(currentUser);
         setLoading(false);
         return;
@@ -72,7 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const querySnapshot = await getDocs(q);
 
         if (!querySnapshot.empty) {
-          console.log("Access granted via Firestore query");
+          log("Access granted via Firestore query");
           setUser(currentUser);
         } else {
           const { doc, getDoc } = await import("firebase/firestore");
@@ -80,17 +86,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const docSnap = await getDoc(docRef);
           
           if (docSnap.exists()) {
-            console.log("Access granted via Firestore doc ID");
+            log("Access granted via Firestore doc ID");
             setUser(currentUser);
           } else {
-            console.warn("Access denied: email not in whitelist");
+            log(`Access denied: ${email} not in whitelist`);
             await signOut(auth);
             setUser(null);
             toast.error(`Toegang geweigerd: ${email} staat niet op de lijst.`);
           }
         }
       } catch (dbError: unknown) {
-        console.error("Database access error:", dbError);
+        log(`Database access error: ${getErrorMessage(dbError)}`);
         await signOut(auth);
         setUser(null);
         toast.error("Fout bij controleren toegangslijst.");
@@ -109,21 +115,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let unsubscribe = () => {};
     let isActive = true;
 
+    const log = (msg: string) => {
+      const logs = JSON.parse(sessionStorage.getItem("auth_logs") || "[]");
+      logs.push(`${new Date().toISOString()}: ${msg}`);
+      sessionStorage.setItem("auth_logs", JSON.stringify(logs.slice(-20)));
+      console.log(msg);
+    };
+
     const initializeAuth = async () => {
+      log("Initializing Auth...");
       try {
         await setPersistence(auth, getPreferredPersistence());
+        log("Persistence set to LOCAL");
       } catch (error) {
-        console.error("Persistence error:", error);
+        log(`Persistence error: ${getErrorMessage(error)}`);
       }
 
       try {
+        log("Checking redirect result...");
         const result = await getRedirectResult(auth);
         if (result?.user) {
-          console.log("Redirect login succesvol voor:", result.user.email);
+          log(`Redirect result found: ${result.user.email}`);
           await checkAccess(result.user);
+        } else {
+          log("No redirect result found");
         }
       } catch (error: unknown) {
-        console.error("Redirect login error:", error);
+        log(`Redirect error: ${getErrorMessage(error)}`);
         const errorCode = getErrorCode(error);
         if (errorCode !== "auth/popup-closed-by-user" && errorCode !== "auth/cancelled-popup-request") {
           toast.error("Fout bij inloggen: " + (getErrorMessage(error) || "onbekende fout"));
@@ -135,12 +153,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
         if (currentUser) {
-          console.log("Auth state change: gebruiker ingelogd", currentUser.email);
+          log(`Auth state changed: user logged in as ${currentUser.email}`);
           await checkAccess(currentUser);
         } else {
-          console.log("Auth state change: geen gebruiker");
-          setUser(null);
-          setLoading(false);
+          log("Auth state changed: no user");
+          if (isActive) {
+            setUser(null);
+            setLoading(false);
+          }
         }
       });
     };

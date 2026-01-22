@@ -7,6 +7,7 @@ import { useState } from "react";
 export default function Login() {
   const { signInWithGoogle, loading } = useAuth();
   const [debugClicks, setDebugClicks] = useState(0);
+  const [logs, setLogs] = useState<string[]>([]);
   
   const handleVersionClick = () => {
     if (debugClicks >= 4) {
@@ -18,6 +19,10 @@ export default function Login() {
         (window as any).eruda.init();
         (window as any).eruda.show();
       };
+      
+      // Also show internal logs
+      const storedLogs = JSON.parse(sessionStorage.getItem("auth_logs") || "[]");
+      setLogs(storedLogs);
       setDebugClicks(0);
     } else {
       setDebugClicks(prev => prev + 1);
@@ -33,6 +38,19 @@ export default function Login() {
       >
         <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"></div>
       </div>
+
+      {/* Debug Overlay */}
+      {logs.length > 0 && (
+        <div className="fixed top-0 left-0 right-0 z-[100] bg-black/80 text-white p-4 text-xs font-mono max-h-60 overflow-auto border-b border-white/20">
+          <div className="flex justify-between mb-2">
+            <span className="font-bold">Auth Logs:</span>
+            <button onClick={() => setLogs([])} className="text-blue-400">Close</button>
+          </div>
+          {logs.map((log, i) => (
+            <div key={i} className="mb-1 border-l-2 border-blue-500 pl-2">{log}</div>
+          ))}
+        </div>
+      )}
 
       {/* Hero Section */}
       <main className="relative z-10 flex flex-col items-center justify-center min-h-screen px-4">
