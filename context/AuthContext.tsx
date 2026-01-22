@@ -123,7 +123,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     const initializeAuth = async () => {
-      log("Initializing Auth...");
+      log(`Initializing Auth (Domain: ${auth.config.authDomain})...`);
       try {
         await setPersistence(auth, getPreferredPersistence());
         log("Persistence set to LOCAL");
@@ -132,6 +132,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       try {
+        // Small delay to ensure browser storage is ready
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
         log("Checking redirect result...");
         const result = await getRedirectResult(auth);
         if (result?.user) {
@@ -175,27 +178,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInWithGoogle = async () => {
     setLoading(true);
-    console.log("Starting Google Sign-In...");
+    const log = (msg: string) => {
+      const logs = JSON.parse(sessionStorage.getItem("auth_logs") || "[]");
+      logs.push(`${new Date().toISOString()}: ${msg}`);
+      sessionStorage.setItem("auth_logs", JSON.stringify(logs.slice(-20)));
+      console.log(msg);
+    };
+
+    log("Starting Google Sign-In process...");
     try {
       const isStandalone = window.matchMedia("(display-mode: standalone)").matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
       const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !("MSStream" in window);
       const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-      const persistence = isStandalone || isIOS ? browserSessionPersistence : browserLocalPersistence;
-
-      console.log("Auth details:", { isStandalone, isIOS, isMobile, persistence: persistence.type });
       
-      await setPersistence(auth, persistence);
-      console.log("Persistence set to:", persistence.type);
+      log(`Device info: isStandalone=${isStandalone}, isIOS=${isIOS}, isMobile=${isMobile}`);
       
-      if (isStandalone || isIOS || isMobile) {
-        console.log("Using signInWithRedirect");
+      await setPersistence(auth, browserLocalPersistence);
+      log("Persistence set to LOCAL");
+      
+      // On iOS Chrome/Safari, popups often work better than redirects unless in PWA mode
+      if (isIOS && !isStandalone) {
+        log("iOS detected: Trying signInWithPopup first...");
+        try {
+          await signInWithPopup(auth, googleProvider);
+          log("Popup login successful");
+          return;
+        } catch (popupError: any) {
+          log(`Popup failed or blocked: ${getErrorMessage(popupError)}. Falling back to redirect...`);
+          // If popup is blocked or fails, fall back to redirect
+          await signInWithRedirect(auth, googleProvider);
+        }
+      } else if (isStandalone || isMobile) {
+        log("Mobile/PWA detected: Using signInWithRedirect");
         await signInWithRedirect(auth, googleProvider);
       } else {
-        console.log("Using signInWithPopup");
+        log("Desktop detected: Using signInWithPopup");
         await signInWithPopup(auth, googleProvider);
       }
     } catch (error: unknown) {
-      console.error("Login failed:", error);
+      log(`Login error: ${getErrorMessage(error)}`);
       const errorMessage = getErrorMessage(error);
       const errorCode = getErrorCode(error);
       toast.error(`Login failed (${errorCode}): ${errorMessage}`);
