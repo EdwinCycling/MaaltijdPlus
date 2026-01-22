@@ -137,6 +137,16 @@ export default function AddMealForm({ onMealAdded, onCancel }: { onMealAdded: ()
     } catch (error: unknown) {
       console.error(error);
       const errorMessage = error instanceof Error ? error.message : "Analyse mislukt";
+      
+      // Specifieke afhandeling voor Next.js Server Action fouten (vaak na een nieuwe deployment)
+      if (errorMessage.includes("Server Action") && errorMessage.includes("not found")) {
+        toast.error("Er is een nieuwe versie van de app beschikbaar. De pagina wordt ververst...", { duration: 4000 });
+        setTimeout(() => {
+          window.location.reload();
+        }, 2000);
+        return;
+      }
+      
       toast.error(errorMessage);
     } finally {
       setIsAnalyzing(false);

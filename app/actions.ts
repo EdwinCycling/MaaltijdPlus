@@ -1,6 +1,7 @@
 "use server";
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { headers } from "next/headers";
 
 const apiKey = process.env.GEMINI_API_KEY;
 const genAI = new GoogleGenerativeAI(apiKey || "");
@@ -11,7 +12,6 @@ const analysisRateLimit = new Map<string, { count: number; timestamp: number }>(
 export async function analyzeMeal(imageBase64: string, mimeType: string) {
   // Simple IP-based rate limiting for the server action
   // In server actions, we get the IP from headers
-  const { headers } = await import("next/headers");
   const headersList = await headers();
   const ip = headersList.get("x-forwarded-for") || "unknown";
   
