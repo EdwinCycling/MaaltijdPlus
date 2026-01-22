@@ -155,23 +155,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInWithGoogle = async () => {
     setLoading(true);
+    console.log("Starting Google Sign-In...");
     try {
       const isStandalone = window.matchMedia("(display-mode: standalone)").matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
       const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !("MSStream" in window);
       const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
       const persistence = isStandalone || isIOS ? browserSessionPersistence : browserLocalPersistence;
 
+      console.log("Auth details:", { isStandalone, isIOS, isMobile, persistence: persistence.type });
+      
       await setPersistence(auth, persistence);
+      console.log("Persistence set to:", persistence.type);
       
       if (isStandalone || isIOS || isMobile) {
+        console.log("Using signInWithRedirect");
         await signInWithRedirect(auth, googleProvider);
       } else {
+        console.log("Using signInWithPopup");
         await signInWithPopup(auth, googleProvider);
       }
-      // checkAccess will be triggered by onAuthStateChanged or getRedirectResult
     } catch (error: unknown) {
-      console.error("Login failed", error);
-      toast.error(getErrorMessage(error) || "Login failed");
+      console.error("Login failed:", error);
+      const errorMessage = getErrorMessage(error);
+      const errorCode = getErrorCode(error);
+      toast.error(`Login failed (${errorCode}): ${errorMessage}`);
       setLoading(false);
     }
   };

@@ -2,9 +2,27 @@
 
 import { useAuth } from "@/context/AuthContext";
 import Image from "next/image";
+import { useState } from "react";
 
 export default function Login() {
   const { signInWithGoogle, loading } = useAuth();
+  const [debugClicks, setDebugClicks] = useState(0);
+  
+  const handleVersionClick = () => {
+    if (debugClicks >= 4) {
+      // Load Eruda for mobile debugging
+      const script = document.createElement('script');
+      script.src = "//cdn.jsdelivr.net/npm/eruda";
+      document.body.appendChild(script);
+      script.onload = () => {
+        (window as any).eruda.init();
+        (window as any).eruda.show();
+      };
+      setDebugClicks(0);
+    } else {
+      setDebugClicks(prev => prev + 1);
+    }
+  };
 
   return (
     <div className="relative min-h-screen w-full overflow-hidden">
@@ -51,7 +69,12 @@ export default function Login() {
       </main>
 
       <footer className="relative z-10 p-6 text-center text-white/60 text-sm">
-        <p>© 2026 MaaltijdPlus • Jouw gezondheid, onze passie • v 1.260121.3</p>
+        <p 
+          className="cursor-pointer select-none"
+          onClick={handleVersionClick}
+        >
+          © 2026 MaaltijdPlus • Jouw gezondheid, onze passie • v 1.260121.3
+        </p>
       </footer>
     </div>
   );
