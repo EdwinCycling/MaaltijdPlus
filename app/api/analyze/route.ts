@@ -59,10 +59,11 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(jsonResult);
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("API Route Error:", error);
+    const errorMessage = error instanceof Error ? error.message : "Interne server fout";
     return NextResponse.json(
-      { error: error.message || "Interne server fout" },
+      { error: errorMessage },
       { status: 500 }
     );
   }

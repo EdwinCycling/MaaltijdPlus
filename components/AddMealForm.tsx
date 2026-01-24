@@ -9,11 +9,19 @@ import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { analyzeMeal } from "@/app/actions";
 import toast from "react-hot-toast";
 
+type IngredientObject = {
+  item?: string;
+  name?: string;
+  ingredient?: string;
+};
+
+type IngredientValue = string | IngredientObject | Record<string, unknown>;
+
 interface AIResult {
   isFood: boolean;
   title?: string;
   details?: string;
-  ingredients?: string[];
+  ingredients?: IngredientValue[];
   recipe?: string;
   shoppingList?: string;
   healthScore?: number;
@@ -116,13 +124,13 @@ export default function AddMealForm({ onMealAdded, onCancel }: { onMealAdded: ()
       const base64Data = compressedBase64.split(",")[1];
       const mimeType = "image/jpeg"; // compressImage levert altijd JPEG
       
-      let result;
+      let result: AIResult;
       try {
         // Eerst proberen via Server Action
-        result = await analyzeMeal(base64Data, mimeType);
-      } catch (serverActionError: any) {
+        result = (await analyzeMeal(base64Data, mimeType)) as AIResult;
+      } catch (serverActionError: unknown) {
         console.warn("Server Action failed, trying API fallback...", serverActionError);
-        const errorMsg = serverActionError.message || "";
+        const errorMsg = serverActionError instanceof Error ? serverActionError.message : String(serverActionError);
         
         // Als het een 'not found' error is of iets anders ernstigs, probeer fallback
         if (errorMsg.includes("not found") || errorMsg.includes("Server Action") || errorMsg.includes("fetch")) {
@@ -136,7 +144,7 @@ export default function AddMealForm({ onMealAdded, onCancel }: { onMealAdded: ()
              const errorData = await response.json();
              throw new Error(errorData.error || "API fallback failed");
            }
-           result = await response.json();
+           result = (await response.json()) as AIResult;
         } else {
           throw serverActionError;
         }
@@ -152,11 +160,11 @@ export default function AddMealForm({ onMealAdded, onCancel }: { onMealAdded: ()
         // Populate new fields
         if (result.ingredients && Array.isArray(result.ingredients)) {
           // Handle both string arrays and object arrays (if AI decides to be fancy)
-          const cleanIngredients = result.ingredients.map((ing: any) => {
-             if (typeof ing === 'string') return ing;
-             if (typeof ing === 'object' && ing !== null) {
-               // Try common fields if it's an object
-               return ing.item || ing.name || ing.ingredient || JSON.stringify(ing);
+          const cleanIngredients = result.ingredients.map((ing) => {
+             if (typeof ing === "string") return ing;
+             if (typeof ing === "object" && ing !== null) {
+               const ingredientObject = ing as IngredientObject;
+               return ingredientObject.item || ingredientObject.name || ingredientObject.ingredient || JSON.stringify(ing);
              }
              return String(ing);
           });

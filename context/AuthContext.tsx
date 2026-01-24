@@ -9,8 +9,7 @@ import {
   signOut, 
   onAuthStateChanged, 
   setPersistence, 
-  browserLocalPersistence,
-  browserSessionPersistence
+  browserLocalPersistence
 } from "firebase/auth";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { auth, googleProvider, db } from "@/lib/firebase";
@@ -47,9 +46,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const getPreferredPersistence = () => {
-    // Force local persistence for better reliability across redirects on mobile
-    return browserLocalPersistence;
+  const REDIRECT_PENDING_KEY = "auth_redirect_pending";
+
+  const safeLocalStorageGet = (key: string) => {
+    try {
+      return localStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  };
+
+  const safeLocalStorageSet = (key: string, value: string) => {
+    try {
+      localStorage.setItem(key, value);
+    } catch {}
+  };
+
+  const safeLocalStorageRemove = (key: string) => {
+    try {
+      localStorage.removeItem(key);
+    } catch {}
+  };
+
+  const safeSessionStorageGet = (key: string) => {
+    try {
+      return sessionStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  };
+
+  const safeSessionStorageSet = (key: string, value: string) => {
+    try {
+      sessionStorage.setItem(key, value);
+    } catch {}
+  };
+
+  const safeSessionStorageRemove = (key: string) => {
+    try {
+      sessionStorage.removeItem(key);
+    } catch {}
   };
 
   const checkAccess = useCallback(async (currentUser: User) => {
@@ -58,8 +94,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!email) throw new Error("Geen e-mailadres gevonden bij Google account");
 
       // 1. Check local cache (localStorage) for faster initial load
-      const cachedAccess = localStorage.getItem(`access_${email}`);
-      const cacheTimestamp = localStorage.getItem(`access_ts_${email}`);
+      const cachedAccess = safeLocalStorageGet(`access_${email}`);
+      const cacheTimestamp = safeLocalStorageGet(`access_ts_${email}`);
       const isCacheValid = cacheTimestamp && (Date.now() - Number(cacheTimestamp) < 30 * 24 * 60 * 60 * 1000); // 30 days cache
 
       if (cachedAccess === 'true' && isCacheValid) {
@@ -70,8 +106,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (HARDCODED_ALLOW_LIST.includes(email)) {
         setUser(currentUser);
-        localStorage.setItem(`access_${email}`, 'true');
-        localStorage.setItem(`access_ts_${email}`, Date.now().toString());
+        safeLocalStorageSet(`access_${email}`, "true");
+        safeLocalStorageSet(`access_ts_${email}`, Date.now().toString());
         setLoading(false);
         return;
       }
@@ -84,8 +120,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         
         if (docSnap.exists()) {
           setUser(currentUser);
-          localStorage.setItem(`access_${email}`, 'true');
-          localStorage.setItem(`access_ts_${email}`, Date.now().toString());
+          safeLocalStorageSet(`access_${email}`, "true");
+          safeLocalStorageSet(`access_ts_${email}`, Date.now().toString());
         } else {
           // Double check with query if direct doc get fails (backward compatibility)
           const q = query(collection(db, "users_whitelist"), where("email", "==", email));
@@ -93,13 +129,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
           if (!querySnapshot.empty) {
              setUser(currentUser);
-             localStorage.setItem(`access_${email}`, 'true');
-             localStorage.setItem(`access_ts_${email}`, Date.now().toString());
+             safeLocalStorageSet(`access_${email}`, "true");
+             safeLocalStorageSet(`access_ts_${email}`, Date.now().toString());
           } else {
              await signOut(auth);
              setUser(null);
-             localStorage.removeItem(`access_${email}`);
-             localStorage.removeItem(`access_ts_${email}`);
+             safeLocalStorageRemove(`access_${email}`);
+             safeLocalStorageRemove(`access_ts_${email}`);
              toast.error(`Toegang geweigerd: ${email} staat niet op de lijst.`);
           }
         }
@@ -124,40 +160,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let unsubscribe = () => {};
     let isActive = true;
+    let redirectPending = safeSessionStorageGet(REDIRECT_PENDING_KEY) === "true";
+    const setRedirectPending = (value: boolean) => {
+      redirectPending = value;
+      if (value) {
+        safeSessionStorageSet(REDIRECT_PENDING_KEY, "true");
+      } else {
+        safeSessionStorageRemove(REDIRECT_PENDING_KEY);
+      }
+    };
 
     const initializeAuth = async () => {
-      // Ensure persistence is set to LOCAL
       try {
         await setPersistence(auth, browserLocalPersistence);
       } catch (error) {
         console.error("Persistence init error:", error);
       }
 
-      // Listen for auth state changes - this is the source of truth
+      if (redirectPending) {
+        try {
+          const result = await getRedirectResult(auth);
+          if (result?.user) {
+            await checkAccess(result.user);
+          }
+        } catch (redirectError) {
+          console.error("Redirect check error:", redirectError);
+          toast.error("Fout bij inloggen na redirect. Probeer opnieuw.");
+        } finally {
+          setRedirectPending(false);
+        }
+      }
+
       unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
         if (!isActive) return;
         
         if (currentUser) {
-          // User is signed in (or restored from persistence)
-          // We don't set loading=false here yet, checkAccess will do it
           await checkAccess(currentUser);
         } else {
-          // No user found... BUT, are we returning from a redirect?
-          // getRedirectResult might still yield a user
-          try {
-             const result = await getRedirectResult(auth);
-             if (result?.user) {
-               await checkAccess(result.user);
-             } else {
-               // Really no user
-               setUser(null);
-               setLoading(false);
-             }
-          } catch (redirectError) {
-            console.error("Redirect check error:", redirectError);
-            setUser(null);
-            setLoading(false);
-          }
+          if (redirectPending) return;
+          setUser(null);
+          setLoading(false);
         }
       });
     };
@@ -174,19 +216,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     try {
       const isStandalone = window.matchMedia("(display-mode: standalone)").matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
-      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !("MSStream" in window);
       const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
       
       await setPersistence(auth, browserLocalPersistence);
       
       // Always use redirect for mobile devices for better stability
       if (isMobile || isStandalone) {
+        safeSessionStorageSet(REDIRECT_PENDING_KEY, "true");
         await signInWithRedirect(auth, googleProvider);
       } else {
         try {
           await signInWithPopup(auth, googleProvider);
-        } catch (popupError: any) {
+        } catch (popupError: unknown) {
           console.warn("Popup failed, falling back to redirect", popupError);
+          safeSessionStorageSet(REDIRECT_PENDING_KEY, "true");
           await signInWithRedirect(auth, googleProvider);
         }
       }
