@@ -52,12 +52,12 @@ export async function analyzeMeal(imageBase64: string, mimeType: string) {
     Als het WEL een maaltijd is, retourneer dan een JSON object met de volgende velden in het Nederlands: 
     { 
       "isFood": true, 
-      "title": "Een korte, pakkende titel van het gerecht",
+      "title": "Een korte, pakkende titel van het gerecht (max 6 woorden)",
       "details": "Een gedetailleerde beschrijving van het gerecht", 
-      "ingredients": ["lijst", "van", "ingrediënten"], 
+      "ingredients": ["ingrediënt 1", "ingrediënt 2", "etc (alleen strings, geen objecten)"], 
       "recipe": "stap-voor-stap bereidingswijze", 
       "shoppingList": "een overzichtelijke boodschappenlijst voor 2 personen, gegroepeerd per afdeling van de Albert Heijn (bijv. Groenten, Zuivel, Houdbaar)",
-      "healthScore": een getal tussen 1 en 10 
+      "healthScore": "Een streng, realistisch cijfer tussen 1 en 10. Wees kritisch: 10 is alleen voor perfect uitgebalanceerde, supergezonde maaltijden met veel groenten en weinig bewerkte producten. Een pizza of patat is typisch 4-5, een standaard pasta 6-7." 
     } 
     Retourneer ALLEEN de JSON.`;
 

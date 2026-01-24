@@ -151,7 +151,16 @@ export default function AddMealForm({ onMealAdded, onCancel }: { onMealAdded: ()
         
         // Populate new fields
         if (result.ingredients && Array.isArray(result.ingredients)) {
-          setIngredients(result.ingredients.join("\n"));
+          // Handle both string arrays and object arrays (if AI decides to be fancy)
+          const cleanIngredients = result.ingredients.map((ing: any) => {
+             if (typeof ing === 'string') return ing;
+             if (typeof ing === 'object' && ing !== null) {
+               // Try common fields if it's an object
+               return ing.item || ing.name || ing.ingredient || JSON.stringify(ing);
+             }
+             return String(ing);
+          });
+          setIngredients(cleanIngredients.join("\n"));
         }
         if (result.recipe) setRecipe(result.recipe);
         if (result.shoppingList) setShoppingList(result.shoppingList);
@@ -349,14 +358,14 @@ export default function AddMealForm({ onMealAdded, onCancel }: { onMealAdded: ()
 
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <div>
+              <div className="col-span-1 md:col-span-2">
                 <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider ml-1">Titel <span className="text-red-500">*</span></label>
                 <input 
                   type="text" 
                   placeholder="Bijv: Boerenkool met worst"
                   value={title}
                   onChange={(e) => setTitle(e.target.value.substring(0, 100))}
-                  className="input-field mt-1"
+                  className="input-field mt-1 w-full"
                   required
                   maxLength={100}
                 />
@@ -368,7 +377,7 @@ export default function AddMealForm({ onMealAdded, onCancel }: { onMealAdded: ()
                   type="date" 
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
-                  className="input-field mt-1"
+                  className="input-field mt-1 w-full"
                   required
                 />
               </div>
