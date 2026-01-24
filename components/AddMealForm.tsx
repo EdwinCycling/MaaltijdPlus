@@ -115,7 +115,32 @@ export default function AddMealForm({ onMealAdded, onCancel }: { onMealAdded: ()
       
       const base64Data = compressedBase64.split(",")[1];
       const mimeType = "image/jpeg"; // compressImage levert altijd JPEG
-      const result = await analyzeMeal(base64Data, mimeType);
+      
+      let result;
+      try {
+        // Eerst proberen via Server Action
+        result = await analyzeMeal(base64Data, mimeType);
+      } catch (serverActionError: any) {
+        console.warn("Server Action failed, trying API fallback...", serverActionError);
+        const errorMsg = serverActionError.message || "";
+        
+        // Als het een 'not found' error is of iets anders ernstigs, probeer fallback
+        if (errorMsg.includes("not found") || errorMsg.includes("Server Action") || errorMsg.includes("fetch")) {
+           const response = await fetch("/api/analyze", {
+             method: "POST",
+             headers: { "Content-Type": "application/json" },
+             body: JSON.stringify({ imageBase64: base64Data, mimeType }),
+           });
+           
+           if (!response.ok) {
+             const errorData = await response.json();
+             throw new Error(errorData.error || "API fallback failed");
+           }
+           result = await response.json();
+        } else {
+          throw serverActionError;
+        }
+      }
       
       if (!result.isFood) {
         toast.error("AI denkt dat dit geen maaltijd is.");

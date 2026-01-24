@@ -157,19 +157,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       await setPersistence(auth, browserLocalPersistence);
       
-      // On iOS Chrome/Safari, popups often work better than redirects unless in PWA mode
-      if (isIOS && !isStandalone) {
-        try {
-          await signInWithPopup(auth, googleProvider);
-          return;
-        } catch (popupError: any) {
-          console.warn("Popup failed or blocked, falling back to redirect:", popupError);
-          await signInWithRedirect(auth, googleProvider);
-        }
-      } else if (isStandalone || isMobile) {
+      // Always use redirect for mobile devices for better stability
+      if (isMobile || isStandalone) {
         await signInWithRedirect(auth, googleProvider);
       } else {
-        await signInWithPopup(auth, googleProvider);
+        try {
+          await signInWithPopup(auth, googleProvider);
+        } catch (popupError: any) {
+          console.warn("Popup failed, falling back to redirect", popupError);
+          await signInWithRedirect(auth, googleProvider);
+        }
       }
     } catch (error: unknown) {
       console.error("Login failed:", error);
