@@ -51,7 +51,7 @@ export default function Login() {
       </main>
 
       <footer className="relative z-10 p-6 text-center text-white/60 text-sm">
-        <p>© 2026 MaaltijdPlus • Jouw gezondheid, onze passie • v 1.260126.1</p>
+        <p>© 2026 MaaltijdPlus • Jouw gezondheid, onze passie • v 1.260126.2</p>
       </footer>
     </div>
   );

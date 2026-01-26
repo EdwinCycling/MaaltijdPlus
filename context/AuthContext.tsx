@@ -140,30 +140,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let isActive = true;
 
     const initializeAuth = async () => {
+      setLoading(true);
       try {
         await setPersistence(auth, browserLocalPersistence);
       } catch (error) {
         console.error("Persistence init error:", error);
       }
 
-      // Check for redirect result (crucial for iOS)
+      // 1. Check for redirect result FIRST
+      let redirectUser: User | null = null;
       try {
         const result = await getRedirectResult(auth);
         if (result?.user) {
           console.log("Redirect login successful", result.user.email);
-          // checkAccess will be called by onAuthStateChanged usually, 
-          // but we can ensure we handle it here if needed.
-          // However, onAuthStateChanged is the source of truth.
+          redirectUser = result.user;
         }
       } catch (error) {
         console.error("Redirect Error:", error);
+        toast.error("Fout bij inloggen via redirect.");
       }
 
+      // 2. Listen for auth state changes
       unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
         if (!isActive) return;
         
-        if (currentUser) {
-          await checkAccess(currentUser);
+        const finalUser = currentUser || redirectUser;
+        
+        if (finalUser) {
+          await checkAccess(finalUser);
         } else {
           setUser(null);
           setLoading(false);
