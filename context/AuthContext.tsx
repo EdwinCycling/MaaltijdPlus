@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, ReactNode, useCallback } from "react";
+import { createContext, useContext, useEffect, useState, ReactNode, useCallback, useRef } from "react";
 import { 
   User, 
   signInWithPopup, 
@@ -45,6 +45,7 @@ const getErrorCode = (error: unknown) => {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const isInitializing = useRef(false);
 
   const safeLocalStorageGet = (key: string) => {
     try {
@@ -148,28 +149,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let isActive = true;
 
     const initializeAuth = async () => {
+      if (isInitializing.current) {
+        console.log("Auth already initializing, skipping...");
+        return;
+      }
+      isInitializing.current = true;
+
       console.log("Initializing Auth...");
+      console.log("Current URL:", window.location.href);
       setLoading(true);
 
       try {
-        // Ensure persistence is set
         await setPersistence(auth, browserLocalPersistence);
         
-        // 1. Check for Redirect Result (Crucial for iOS Safari)
+        // 1. Check for Redirect Result
         console.log("Checking getRedirectResult...");
         const result = await getRedirectResult(auth);
         
         if (result?.user) {
           console.log("Redirect result found:", result.user.email);
           await checkAccess(result.user);
-          // If checkAccess finishes, it will set loading to false
           if (!isActive) return;
         } else {
-          console.log("No redirect result found.");
+          console.log("No redirect result found. (result is null)");
+          // Check if there are auth-related params in the URL that might explain why result is null
+          const urlParams = new URLSearchParams(window.location.search);
+          if (urlParams.has("error") || urlParams.has("errorCode")) {
+            console.error("Auth error found in URL params:", {
+              error: urlParams.get("error"),
+              code: urlParams.get("errorCode")
+            });
+          }
         }
       } catch (error) {
-        console.error("Auth Initialization Error:", error);
-        toast.error("Fout bij initialiseren van sessie.");
+        console.error("Auth Initialization Error (getRedirectResult):", error);
+        const code = getErrorCode(error);
+        if (code === "auth/internal-error" || code === "auth/network-request-failed") {
+          toast.error("Netwerkfout bij inloggen. Controleer je verbinding.");
+        } else {
+          toast.error(`Inlogfout: ${getErrorMessage(error)}`);
+        }
       }
 
       // 2. Setup the permanent listener

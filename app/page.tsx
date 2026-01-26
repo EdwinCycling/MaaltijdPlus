@@ -202,7 +202,7 @@ export default function Home() {
       )}
 
       <footer className="mt-auto py-8 text-center text-slate-400 dark:text-slate-500 text-sm border-t border-slate-100 dark:border-slate-800/50">
-        <p>© 2026 MaaltijdPlus • Jouw gezondheid, onze passie • v 1.260126.4</p>
+        <p>© 2026 MaaltijdPlus • Jouw gezondheid, onze passie • v 1.260126.5</p>
       </footer>
 
       <UpdateNotification />
