@@ -1,14 +1,14 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState, ReactNode, useCallback, useRef } from "react";
-import { 
-  User, 
-  signInWithPopup, 
+import {
+  User,
+  signInWithPopup,
   signInWithRedirect,
   getRedirectResult,
-  signOut, 
-  onAuthStateChanged, 
-  setPersistence, 
+  signOut,
+  onAuthStateChanged,
+  setPersistence,
   browserLocalPersistence
 } from "firebase/auth";
 import { collection, query, where, getDocs } from "firebase/firestore";
@@ -58,19 +58,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const safeLocalStorageSet = (key: string, value: string) => {
     try {
       localStorage.setItem(key, value);
-    } catch {}
+    } catch { }
   };
 
   const safeLocalStorageRemove = (key: string) => {
     try {
       localStorage.removeItem(key);
-    } catch {}
+    } catch { }
   };
 
   const checkAccess = useCallback(async (currentUser: User) => {
     const email = currentUser.email;
     console.log("Checking access for:", email);
-    
+
     try {
       if (!email) throw new Error("Geen e-mailadres gevonden bij Google account");
 
@@ -100,7 +100,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { doc, getDoc } = await import("firebase/firestore");
         const docRef = doc(db, "users_whitelist", email);
         const docSnap = await getDoc(docRef);
-        
+
         if (docSnap.exists()) {
           console.log("Access granted via database (direct doc)");
           setUser(currentUser);
@@ -113,17 +113,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const querySnapshot = await getDocs(q);
 
           if (!querySnapshot.empty) {
-             console.log("Access granted via database (query)");
-             setUser(currentUser);
-             safeLocalStorageSet(`access_${email}`, "true");
-             safeLocalStorageSet(`access_ts_${email}`, Date.now().toString());
+            console.log("Access granted via database (query)");
+            setUser(currentUser);
+            safeLocalStorageSet(`access_${email}`, "true");
+            safeLocalStorageSet(`access_ts_${email}`, Date.now().toString());
           } else {
-             console.warn("Access denied: User not in whitelist");
-             await signOut(auth);
-             setUser(null);
-             safeLocalStorageRemove(`access_${email}`);
-             safeLocalStorageRemove(`access_ts_${email}`);
-             toast.error(`Toegang geweigerd: ${email} staat niet op de lijst.`);
+            console.warn("Access denied: User not in whitelist");
+            await signOut(auth);
+            setUser(null);
+            safeLocalStorageRemove(`access_${email}`);
+            safeLocalStorageRemove(`access_ts_${email}`);
+            toast.error(`Toegang geweigerd: ${email} staat niet op de lijst.`);
           }
         }
       } catch (dbError: unknown) {
@@ -145,7 +145,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    let unsubscribe = () => {};
+    let unsubscribe = () => { };
     let isActive = true;
 
     const initializeAuth = async () => {
@@ -171,7 +171,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log("Setting up onAuthStateChanged listener...");
       unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
         if (!isActive) return;
-        
+
         if (currentUser) {
           console.log("Auth state changed: User logged in", currentUser.email);
           safeLocalStorageRemove("auth_redirect_pending");
@@ -190,7 +190,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // 2. Check for Redirect Result
         console.log("Checking getRedirectResult...");
         const result = await getRedirectResult(auth);
-        
+
         if (result?.user) {
           console.log("Redirect result found:", result.user.email);
           safeLocalStorageRemove("auth_redirect_pending");
@@ -200,7 +200,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.log("No redirect result found. (result is null)");
           if (isRedirectPending) {
             console.log("Redirect was pending but no result found. Waiting for listener or timeout...");
-            
+
             // Final timeout for redirect
             setTimeout(() => {
               if (safeLocalStorageGet("auth_redirect_pending") === "true") {
@@ -231,19 +231,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signInWithGoogle = async () => {
     console.log("Starting Google Sign In...");
     setLoading(true);
+
     try {
-      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-      console.log("Device is mobile:", isMobile);
-      
       await setPersistence(auth, browserLocalPersistence);
 
-      if (isMobile) {
-        console.log("Using signInWithRedirect");
-        safeLocalStorageSet("auth_redirect_pending", "true");
-        await signInWithRedirect(auth, googleProvider);
-      } else {
-        console.log("Using signInWithPopup");
-        await signInWithPopup(auth, googleProvider);
+      // Always try popup first - it's more reliable on mobile browsers
+      // Redirect has issues with cookie/session storage on Safari/iOS
+      console.log("Attempting signInWithPopup...");
+      try {
+        const result = await signInWithPopup(auth, googleProvider);
+        console.log("Popup sign-in successful:", result.user.email);
+        // onAuthStateChanged will handle the rest
+        return;
+      } catch (popupError: unknown) {
+        const errorCode = getErrorCode(popupError);
+        console.log("Popup failed with code:", errorCode);
+
+        // Only fall back to redirect for specific popup-blocked errors
+        if (errorCode === 'auth/popup-blocked' ||
+          errorCode === 'auth/popup-closed-by-user' ||
+          errorCode === 'auth/cancelled-popup-request') {
+          console.log("Popup was blocked or closed, falling back to redirect...");
+          safeLocalStorageSet("auth_redirect_pending", "true");
+          await signInWithRedirect(auth, googleProvider);
+          return;
+        }
+
+        // For other errors, re-throw to be handled below
+        throw popupError;
       }
     } catch (error: unknown) {
       console.error("Login failed:", error);
