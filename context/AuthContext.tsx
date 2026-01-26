@@ -67,8 +67,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const checkAccess = useCallback(async (currentUser: User) => {
+    const email = currentUser.email;
+    console.log("Checking access for:", email);
+    
     try {
-      const email = currentUser.email;
       if (!email) throw new Error("Geen e-mailadres gevonden bij Google account");
 
       // 1. Check local cache (localStorage) for faster initial load
@@ -77,12 +79,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const isCacheValid = cacheTimestamp && (Date.now() - Number(cacheTimestamp) < 30 * 24 * 60 * 60 * 1000); // 30 days cache
 
       if (cachedAccess === 'true' && isCacheValid) {
+        console.log("Access granted via cache");
         setUser(currentUser);
         setLoading(false);
-        return; // Early return, but we might want to re-validate in background occasionally? For now, speed first.
+        return;
       }
 
       if (HARDCODED_ALLOW_LIST.includes(email)) {
+        console.log("Access granted via hardcoded whitelist");
         setUser(currentUser);
         safeLocalStorageSet(`access_${email}`, "true");
         safeLocalStorageSet(`access_ts_${email}`, Date.now().toString());
@@ -91,25 +95,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       try {
-        // Use a more direct check
+        console.log("Checking database for whitelist...");
         const { doc, getDoc } = await import("firebase/firestore");
         const docRef = doc(db, "users_whitelist", email);
         const docSnap = await getDoc(docRef);
         
         if (docSnap.exists()) {
+          console.log("Access granted via database (direct doc)");
           setUser(currentUser);
           safeLocalStorageSet(`access_${email}`, "true");
           safeLocalStorageSet(`access_ts_${email}`, Date.now().toString());
         } else {
+          console.log("Direct doc not found, trying query...");
           // Double check with query if direct doc get fails (backward compatibility)
           const q = query(collection(db, "users_whitelist"), where("email", "==", email));
           const querySnapshot = await getDocs(q);
 
           if (!querySnapshot.empty) {
+             console.log("Access granted via database (query)");
              setUser(currentUser);
              safeLocalStorageSet(`access_${email}`, "true");
              safeLocalStorageSet(`access_ts_${email}`, Date.now().toString());
           } else {
+             console.warn("Access denied: User not in whitelist");
              await signOut(auth);
              setUser(null);
              safeLocalStorageRemove(`access_${email}`);
@@ -119,8 +127,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       } catch (dbError: unknown) {
         console.error("Database access error:", dbError);
-        // If DB fails but we had a valid user, maybe allow? 
-        // No, security first. But show clear error.
+        // If DB fails, we should NOT sign out immediately if we already have a user in state
+        // but for now we follow the security rule: No data, no access.
         await signOut(auth);
         setUser(null);
         toast.error("Fout bij controleren toegangslijst. Probeer het later opnieuw.");
@@ -140,35 +148,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let isActive = true;
 
     const initializeAuth = async () => {
+      console.log("Initializing Auth...");
       setLoading(true);
-      try {
-        await setPersistence(auth, browserLocalPersistence);
-      } catch (error) {
-        console.error("Persistence init error:", error);
-      }
 
-      // 1. Check for redirect result FIRST
-      let redirectUser: User | null = null;
       try {
+        // Ensure persistence is set
+        await setPersistence(auth, browserLocalPersistence);
+        
+        // 1. Check for Redirect Result (Crucial for iOS Safari)
+        console.log("Checking getRedirectResult...");
         const result = await getRedirectResult(auth);
+        
         if (result?.user) {
-          console.log("Redirect login successful", result.user.email);
-          redirectUser = result.user;
+          console.log("Redirect result found:", result.user.email);
+          await checkAccess(result.user);
+          // If checkAccess finishes, it will set loading to false
+          if (!isActive) return;
+        } else {
+          console.log("No redirect result found.");
         }
       } catch (error) {
-        console.error("Redirect Error:", error);
-        toast.error("Fout bij inloggen via redirect.");
+        console.error("Auth Initialization Error:", error);
+        toast.error("Fout bij initialiseren van sessie.");
       }
 
-      // 2. Listen for auth state changes
+      // 2. Setup the permanent listener
+      console.log("Setting up onAuthStateChanged listener...");
       unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
         if (!isActive) return;
         
-        const finalUser = currentUser || redirectUser;
-        
-        if (finalUser) {
-          await checkAccess(finalUser);
+        if (currentUser) {
+          console.log("Auth state changed: User logged in", currentUser.email);
+          await checkAccess(currentUser);
         } else {
+          console.log("Auth state changed: No user");
           setUser(null);
           setLoading(false);
         }
@@ -184,17 +197,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [checkAccess]);
 
   const signInWithGoogle = async () => {
+    console.log("Starting Google Sign In...");
     setLoading(true);
     try {
       const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      console.log("Device is mobile:", isMobile);
       
       await setPersistence(auth, browserLocalPersistence);
       
       if (isMobile) {
-        // Op mobiel: Redirect (Pagina ververst) - Dit fixt het iOS probleem
+        console.log("Using signInWithRedirect");
         await signInWithRedirect(auth, googleProvider);
       } else {
-        // Op desktop: Popup (Blijft op pagina) - Dit is gebruiksvriendelijker
+        console.log("Using signInWithPopup");
         await signInWithPopup(auth, googleProvider);
       }
     } catch (error: unknown) {
