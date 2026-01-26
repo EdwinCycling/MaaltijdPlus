@@ -3,24 +3,22 @@
 import { createContext, useContext, useEffect, useState, ReactNode, useCallback, useRef } from "react";
 import {
   User,
-  signInWithPopup,
-  signInWithRedirect,
-  getRedirectResult,
   signOut,
   onAuthStateChanged,
   setPersistence,
   browserLocalPersistence,
-  indexedDBLocalPersistence,
-  inMemoryPersistence
+  sendSignInLinkToEmail,
+  isSignInWithEmailLink,
+  signInWithEmailLink
 } from "firebase/auth";
-import { collection, query, where, getDocs } from "firebase/firestore";
-import { auth, googleProvider, db } from "@/lib/firebase";
+import { collection, query, where, getDocs, doc, getDoc } from "firebase/firestore";
+import { auth, db } from "@/lib/firebase";
 import toast from "react-hot-toast";
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  signInWithGoogle: () => Promise<void>;
+  sendMagicLink: (email: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -34,14 +32,6 @@ const HARDCODED_ALLOW_LIST: string[] = [
 const getErrorMessage = (error: unknown) => {
   if (error instanceof Error) return error.message;
   return String(error);
-};
-
-const getErrorCode = (error: unknown) => {
-  if (typeof error === "object" && error && "code" in error) {
-    const codeValue = (error as { code?: unknown }).code;
-    return typeof codeValue === "string" ? codeValue : undefined;
-  }
-  return undefined;
 };
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -74,7 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     console.log("Checking access for:", email);
 
     try {
-      if (!email) throw new Error("Geen e-mailadres gevonden bij Google account");
+      if (!email) throw new Error("Geen e-mailadres gevonden");
 
       // 1. Check local cache (localStorage) for faster initial load
       const cachedAccess = safeLocalStorageGet(`access_${email}`);
@@ -99,23 +89,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       try {
         console.log("Checking database for whitelist...");
-        const { doc, getDoc } = await import("firebase/firestore");
+        
+        // 1. Try allowed_users collection (as seen in screenshot: email as field)
+        const allowedUsersQ = query(collection(db, "allowed_users"), where("email", "==", email));
+        const allowedUsersSnap = await getDocs(allowedUsersQ);
+
+        if (!allowedUsersSnap.empty) {
+          console.log("Access granted via allowed_users query");
+          setUser(currentUser);
+          safeLocalStorageSet(`access_${email}`, "true");
+          safeLocalStorageSet(`access_ts_${email}`, Date.now().toString());
+          setLoading(false);
+          return;
+        }
+
+        // 2. Try users_whitelist direct doc (email as ID)
         const docRef = doc(db, "users_whitelist", email);
         const docSnap = await getDoc(docRef);
 
         if (docSnap.exists()) {
-          console.log("Access granted via database (direct doc)");
+          console.log("Access granted via users_whitelist (direct doc)");
           setUser(currentUser);
           safeLocalStorageSet(`access_${email}`, "true");
           safeLocalStorageSet(`access_ts_${email}`, Date.now().toString());
         } else {
-          console.log("Direct doc not found, trying query...");
-          // Double check with query if direct doc get fails (backward compatibility)
+          console.log("Direct doc not found in users_whitelist, trying query...");
+          // 3. Try users_whitelist query (email as field)
           const q = query(collection(db, "users_whitelist"), where("email", "==", email));
           const querySnapshot = await getDocs(q);
 
           if (!querySnapshot.empty) {
-            console.log("Access granted via database (query)");
+            console.log("Access granted via users_whitelist (query)");
             setUser(currentUser);
             safeLocalStorageSet(`access_${email}`, "true");
             safeLocalStorageSet(`access_ts_${email}`, Date.now().toString());
@@ -148,197 +152,121 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let unsubscribe = () => { };
-    let isActive = true;
 
     const initializeAuth = async () => {
-      if (isInitializing.current) {
-        console.log("Auth already initializing, skipping...");
-        return;
-      }
+      if (isInitializing.current) return;
       isInitializing.current = true;
 
-      // Detect mobile Safari for longer delays
-      const isMobileSafari = /iPhone|iPad|iPod/i.test(navigator.userAgent) &&
-        /Safari/i.test(navigator.userAgent) &&
-        !/Chrome|CriOS|FxiOS/i.test(navigator.userAgent);
-
-      // Increased delay for Safari/iOS to ensure indexedDB/cookies are ready
-      const initDelay = isMobileSafari ? 2000 : 500;
-      console.log(`Waiting ${initDelay}ms before auth init (Safari: ${isMobileSafari})...`);
-      await new Promise(resolve => setTimeout(resolve, initDelay));
-
-      console.log("Initializing Auth...");
-      console.log("Current URL:", window.location.href);
-      console.log("Referrer:", document.referrer);
       setLoading(true);
 
-      // Check for pending redirect in both storage types
-      const localPending = safeLocalStorageGet("auth_redirect_pending") === "true";
-      let sessionPending = false;
-      try {
-        sessionPending = sessionStorage.getItem("auth_redirect_pending") === "true";
-      } catch { }
-      const isRedirectPending = localPending || sessionPending;
-      console.log("Is redirect pending?", { localPending, sessionPending, isRedirectPending });
+      // Check if this is a Magic Link sign-in
+      if (isSignInWithEmailLink(auth, window.location.href)) {
+        console.log("Detected Magic Link sign-in");
+        let email = safeLocalStorageGet('emailForSignIn');
+        
+        if (!email) {
+          // If email is not in storage, ask user for it (could happen if they click link on different device)
+          email = window.prompt('Bevestig je e-mailadres voor inloggen:');
+        }
 
-      // 1. Setup the permanent listener FIRST
+        if (email) {
+          try {
+            await setPersistence(auth, browserLocalPersistence);
+            const result = await signInWithEmailLink(auth, email, window.location.href);
+            console.log("Magic Link sign-in successful:", result.user.email);
+            safeLocalStorageRemove('emailForSignIn');
+            // The onAuthStateChanged listener will handle the rest (checkAccess)
+          } catch (error) {
+            console.error("Magic Link sign-in error:", error);
+            toast.error("Inloggen met link mislukt. Vraag een nieuwe link aan.");
+            setLoading(false); // Make sure to stop loading if error
+          }
+        } else {
+            setLoading(false);
+        }
+      }
+
       console.log("Setting up onAuthStateChanged listener...");
       unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-        if (!isActive) return;
-
         if (currentUser) {
           console.log("Auth state changed: User logged in", currentUser.email);
-          safeLocalStorageRemove("auth_redirect_pending");
-          try { sessionStorage.removeItem("auth_redirect_pending"); } catch { }
           await checkAccess(currentUser);
         } else {
           console.log("Auth state changed: No user");
-          const stillPending = safeLocalStorageGet("auth_redirect_pending") === "true";
-          if (!stillPending) {
-            setUser(null);
-            setLoading(false);
-          }
+          setUser(null);
+          setLoading(false);
         }
       });
-
-      try {
-        // 2. Check for Redirect Result - with retry for Safari
-        console.log("Checking getRedirectResult...");
-        let result = await getRedirectResult(auth);
-
-        // Safari sometimes needs a second try after a delay
-        if (!result?.user && isRedirectPending && isMobileSafari) {
-          console.log("No result on first try, waiting and retrying for Safari...");
-          await new Promise(resolve => setTimeout(resolve, 1500));
-          result = await getRedirectResult(auth);
-        }
-
-        if (result?.user) {
-          console.log("Redirect result found:", result.user.email);
-          safeLocalStorageRemove("auth_redirect_pending");
-          try { sessionStorage.removeItem("auth_redirect_pending"); } catch { }
-          await checkAccess(result.user);
-          if (!isActive) return;
-        } else {
-          console.log("No redirect result found. (result is null)");
-          if (isRedirectPending) {
-            console.log("Redirect was pending but no result found. Waiting for listener or timeout...");
-
-            // Final timeout for redirect - longer for Safari
-            const timeoutMs = isMobileSafari ? 8000 : 4000;
-            setTimeout(() => {
-              const stillPending = safeLocalStorageGet("auth_redirect_pending") === "true";
-              if (stillPending) {
-                console.log("Redirect pending timeout reached.");
-                safeLocalStorageRemove("auth_redirect_pending");
-                try { sessionStorage.removeItem("auth_redirect_pending"); } catch { }
-                if (!auth.currentUser) {
-                  setLoading(false);
-                  toast.error("Inloggen mislukt. Probeer het opnieuw.");
-                }
-              }
-            }, timeoutMs);
-          }
-        }
-      } catch (error) {
-        console.error("Auth Initialization Error (getRedirectResult):", error);
-        safeLocalStorageRemove("auth_redirect_pending");
-        try { sessionStorage.removeItem("auth_redirect_pending"); } catch { }
-        setLoading(false);
-      }
     };
 
     void initializeAuth();
 
     return () => {
-      isActive = false;
       unsubscribe();
     };
   }, [checkAccess]);
 
-  // Helper function for adding waits in promise chain (similar to gapi pattern)
-  const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-  const signInWithGoogle = async () => {
-    console.log("Starting Google Sign In...");
+  const sendMagicLink = async (email: string) => {
+    console.log("Starting Magic Link send for:", email);
     setLoading(true);
 
     try {
-      // Detect if we're on mobile Safari/iOS - these block popups and have redirect issues
-      const isMobileSafari = /iPhone|iPad|iPod/i.test(navigator.userAgent) &&
-        /Safari/i.test(navigator.userAgent) &&
-        !/Chrome|CriOS|FxiOS/i.test(navigator.userAgent);
-      const isAndroid = /Android/i.test(navigator.userAgent);
-      const isMobile = isMobileSafari || isAndroid;
-
-      console.log("Device detection:", { isMobileSafari, isAndroid, isMobile });
-
-      // Use different persistence strategies based on browser
-      // Safari has issues with localStorage for cross-origin auth, try indexedDB first
-      if (isMobileSafari) {
-        console.log("Safari detected, using indexedDB persistence...");
-        try {
-          await setPersistence(auth, indexedDBLocalPersistence);
-        } catch (e) {
-          console.log("indexedDB failed, falling back to inMemory:", e);
-          await setPersistence(auth, inMemoryPersistence);
-        }
-      } else {
-        await setPersistence(auth, browserLocalPersistence);
-      }
-
-      // Wait after setting persistence (like gapi pattern)
-      await wait(300);
-
-      if (isMobile) {
-        // On mobile, use redirect directly - popups are always blocked
-        console.log("Mobile detected, using signInWithRedirect directly...");
-
-        // Store pending state in both localStorage AND sessionStorage for redundancy
-        safeLocalStorageSet("auth_redirect_pending", "true");
-        try {
-          sessionStorage.setItem("auth_redirect_pending", "true");
-          sessionStorage.setItem("auth_redirect_time", Date.now().toString());
-        } catch (e) {
-          console.log("sessionStorage not available:", e);
+        // 1. Whitelist Check BEFORE sending
+        if (HARDCODED_ALLOW_LIST.includes(email)) {
+            console.log("Email is in hardcoded whitelist, proceeding...");
+        } else {
+            console.log("Checking Firestore whitelist...");
+            
+            // 1. Try allowed_users (email as field - as seen in screenshot)
+            const allowedUsersQ = query(collection(db, "allowed_users"), where("email", "==", email));
+            const allowedUsersSnap = await getDocs(allowedUsersQ);
+            
+            if (allowedUsersSnap.empty) {
+                console.log("Not found in allowed_users field, trying direct doc IDs...");
+                
+                // 2. Try allowed_users (email as ID)
+                const docRef = doc(db, "allowed_users", email);
+                const docSnap = await getDoc(docRef);
+                
+                if (!docSnap.exists()) {
+                    console.log("Not found in allowed_users, trying users_whitelist...");
+                    
+                    // 3. Try users_whitelist (email as ID or field)
+                    const legacyRef = doc(db, "users_whitelist", email);
+                    const legacySnap = await getDoc(legacyRef);
+                    
+                    if (!legacySnap.exists()) {
+                        const q = query(collection(db, "users_whitelist"), where("email", "==", email));
+                        const qSnap = await getDocs(q);
+                        
+                        if (qSnap.empty) {
+                            throw new Error(`Email ${email} not authorized`);
+                        }
+                    }
+                }
+            }
         }
 
-        // Wait to ensure storage is written before redirect (gapi pattern)
-        await wait(300);
+      const actionCodeSettings = {
+        // URL you want to redirect back to. The domain (www.example.com) for this
+        // URL must be in the authorized domains list in the Firebase Console.
+        url: window.location.origin,
+        handleCodeInApp: true,
+      };
 
-        await signInWithRedirect(auth, googleProvider);
-
-        // Wait after redirect call (browser will navigate away)
-        await wait(300);
-        return;
-      }
-
-      // Desktop: try popup first
-      console.log("Desktop detected, attempting signInWithPopup...");
-      try {
-        const result = await signInWithPopup(auth, googleProvider);
-        console.log("Popup sign-in successful:", result.user.email);
-        return;
-      } catch (popupError: unknown) {
-        const errorCode = getErrorCode(popupError);
-        console.log("Popup failed with code:", errorCode);
-
-        if (errorCode === 'auth/popup-blocked' ||
-          errorCode === 'auth/popup-closed-by-user' ||
-          errorCode === 'auth/cancelled-popup-request') {
-          console.log("Popup was blocked or closed, falling back to redirect...");
-          safeLocalStorageSet("auth_redirect_pending", "true");
-          await signInWithRedirect(auth, googleProvider);
-          return;
-        }
-
-        throw popupError;
-      }
+      await sendSignInLinkToEmail(auth, email, actionCodeSettings);
+      safeLocalStorageSet('emailForSignIn', email);
+      toast.success("Check je email om in te loggen!");
+      
     } catch (error: unknown) {
-      console.error("Login failed:", error);
+      console.error("Send Magic Link failed:", error);
       const errorMessage = getErrorMessage(error);
-      const errorCode = getErrorCode(error);
-      toast.error(`Login failed (${errorCode}): ${errorMessage}`);
+      if (errorMessage.includes("not authorized")) {
+        toast.error(`Email niet geautoriseerd: ${email}`);
+      } else {
+        toast.error(`Versturen mislukt: ${errorMessage}`);
+      }
+    } finally {
       setLoading(false);
     }
   };
@@ -347,15 +275,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await signOut(auth);
       setUser(null);
-      toast.success("Logged out successfully");
+      toast.success("Uitgelogd");
     } catch (error) {
       console.error("Logout failed", error);
-      toast.error("Logout failed");
+      toast.error("Uitloggen mislukt");
     }
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, signInWithGoogle, logout }}>
+    <AuthContext.Provider value={{ user, loading, sendMagicLink, logout }}>
       {children}
     </AuthContext.Provider>
   );
