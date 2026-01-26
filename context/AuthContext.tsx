@@ -9,7 +9,9 @@ import {
   signOut,
   onAuthStateChanged,
   setPersistence,
-  browserLocalPersistence
+  browserLocalPersistence,
+  indexedDBLocalPersistence,
+  inMemoryPersistence
 } from "firebase/auth";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { auth, googleProvider, db } from "@/lib/firebase";
@@ -254,13 +256,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [checkAccess]);
 
+  // Helper function for adding waits in promise chain (similar to gapi pattern)
+  const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
   const signInWithGoogle = async () => {
     console.log("Starting Google Sign In...");
     setLoading(true);
 
     try {
-      await setPersistence(auth, browserLocalPersistence);
-
       // Detect if we're on mobile Safari/iOS - these block popups and have redirect issues
       const isMobileSafari = /iPhone|iPad|iPod/i.test(navigator.userAgent) &&
         /Safari/i.test(navigator.userAgent) &&
@@ -269,6 +272,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const isMobile = isMobileSafari || isAndroid;
 
       console.log("Device detection:", { isMobileSafari, isAndroid, isMobile });
+
+      // Use different persistence strategies based on browser
+      // Safari has issues with localStorage for cross-origin auth, try indexedDB first
+      if (isMobileSafari) {
+        console.log("Safari detected, using indexedDB persistence...");
+        try {
+          await setPersistence(auth, indexedDBLocalPersistence);
+        } catch (e) {
+          console.log("indexedDB failed, falling back to inMemory:", e);
+          await setPersistence(auth, inMemoryPersistence);
+        }
+      } else {
+        await setPersistence(auth, browserLocalPersistence);
+      }
+
+      // Wait after setting persistence (like gapi pattern)
+      await wait(300);
 
       if (isMobile) {
         // On mobile, use redirect directly - popups are always blocked
@@ -283,10 +303,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.log("sessionStorage not available:", e);
         }
 
-        // Small delay to ensure storage is written before redirect
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // Wait to ensure storage is written before redirect (gapi pattern)
+        await wait(300);
 
         await signInWithRedirect(auth, googleProvider);
+
+        // Wait after redirect call (browser will navigate away)
+        await wait(300);
         return;
       }
 
