@@ -46,8 +46,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const REDIRECT_PENDING_KEY = "auth_redirect_pending";
-
   const safeLocalStorageGet = (key: string) => {
     try {
       return localStorage.getItem(key);
@@ -65,26 +63,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const safeLocalStorageRemove = (key: string) => {
     try {
       localStorage.removeItem(key);
-    } catch {}
-  };
-
-  const safeSessionStorageGet = (key: string) => {
-    try {
-      return sessionStorage.getItem(key);
-    } catch {
-      return null;
-    }
-  };
-
-  const safeSessionStorageSet = (key: string, value: string) => {
-    try {
-      sessionStorage.setItem(key, value);
-    } catch {}
-  };
-
-  const safeSessionStorageRemove = (key: string) => {
-    try {
-      sessionStorage.removeItem(key);
     } catch {}
   };
 
@@ -160,15 +138,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let unsubscribe = () => {};
     let isActive = true;
-    let redirectPending = safeSessionStorageGet(REDIRECT_PENDING_KEY) === "true";
-    const setRedirectPending = (value: boolean) => {
-      redirectPending = value;
-      if (value) {
-        safeSessionStorageSet(REDIRECT_PENDING_KEY, "true");
-      } else {
-        safeSessionStorageRemove(REDIRECT_PENDING_KEY);
-      }
-    };
 
     const initializeAuth = async () => {
       try {
@@ -177,18 +146,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.error("Persistence init error:", error);
       }
 
-      if (redirectPending) {
-        try {
-          const result = await getRedirectResult(auth);
-          if (result?.user) {
-            await checkAccess(result.user);
-          }
-        } catch (redirectError) {
-          console.error("Redirect check error:", redirectError);
-          toast.error("Fout bij inloggen na redirect. Probeer opnieuw.");
-        } finally {
-          setRedirectPending(false);
+      // Check for redirect result (crucial for iOS)
+      try {
+        const result = await getRedirectResult(auth);
+        if (result?.user) {
+          console.log("Redirect login successful", result.user.email);
+          // checkAccess will be called by onAuthStateChanged usually, 
+          // but we can ensure we handle it here if needed.
+          // However, onAuthStateChanged is the source of truth.
         }
+      } catch (error) {
+        console.error("Redirect Error:", error);
       }
 
       unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -197,7 +165,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (currentUser) {
           await checkAccess(currentUser);
         } else {
-          if (redirectPending) return;
           setUser(null);
           setLoading(false);
         }
@@ -215,23 +182,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signInWithGoogle = async () => {
     setLoading(true);
     try {
-      const isStandalone = window.matchMedia("(display-mode: standalone)").matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
-      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
       
       await setPersistence(auth, browserLocalPersistence);
       
-      // Always use redirect for mobile devices for better stability
-      if (isMobile || isStandalone) {
-        safeSessionStorageSet(REDIRECT_PENDING_KEY, "true");
+      if (isMobile) {
+        // Op mobiel: Redirect (Pagina ververst) - Dit fixt het iOS probleem
         await signInWithRedirect(auth, googleProvider);
       } else {
-        try {
-          await signInWithPopup(auth, googleProvider);
-        } catch (popupError: unknown) {
-          console.warn("Popup failed, falling back to redirect", popupError);
-          safeSessionStorageSet(REDIRECT_PENDING_KEY, "true");
-          await signInWithRedirect(auth, googleProvider);
-        }
+        // Op desktop: Popup (Blijft op pagina) - Dit is gebruiksvriendelijker
+        await signInWithPopup(auth, googleProvider);
       }
     } catch (error: unknown) {
       console.error("Login failed:", error);
