@@ -9,7 +9,7 @@ export default function Login() {
   return (
     <div className="relative min-h-screen w-full overflow-hidden">
       {/* Background Image */}
-      <div 
+      <div
         className="absolute inset-0 z-0 bg-cover bg-center bg-no-repeat transition-transform duration-1000 hover:scale-105"
         style={{ backgroundImage: "url('/intro.jpg')" }}
       >
@@ -25,7 +25,7 @@ export default function Login() {
           <p className="text-lg md:text-xl text-white/90 mb-10 max-w-2xl mx-auto leading-relaxed">
             Je persoonlijke AI-maaltijdtracker. Houd bij wat je eet, krijg direct voedingsadvies en bewaar je favoriete recepten. Alles in één simpele app.
           </p>
-          
+
           <button
             onClick={signInWithGoogle}
             disabled={loading}
@@ -51,7 +51,7 @@ export default function Login() {
       </main>
 
       <footer className="relative z-10 p-6 text-center text-white/60 text-sm">
-        <p>© 2026 MaaltijdPlus • Jouw gezondheid, onze passie • v 1.260126.8</p>
+        <p>© 2026 MaaltijdPlus • Jouw gezondheid, onze passie • v 1.260126.9</p>
       </footer>
     </div>
   );
