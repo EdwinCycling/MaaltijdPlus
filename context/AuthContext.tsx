@@ -237,7 +237,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log("Device is mobile:", isMobile);
       
       await setPersistence(auth, browserLocalPersistence);
-     try {
+
       if (isMobile) {
         console.log("Using signInWithRedirect");
         safeLocalStorageSet("auth_redirect_pending", "true");
