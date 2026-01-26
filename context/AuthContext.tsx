@@ -155,19 +155,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       isInitializing.current = true;
 
+      // Detect mobile Safari for longer delays
+      const isMobileSafari = /iPhone|iPad|iPod/i.test(navigator.userAgent) &&
+        /Safari/i.test(navigator.userAgent) &&
+        !/Chrome|CriOS|FxiOS/i.test(navigator.userAgent);
+
       // Increased delay for Safari/iOS to ensure indexedDB/cookies are ready
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const initDelay = isMobileSafari ? 2000 : 500;
+      console.log(`Waiting ${initDelay}ms before auth init (Safari: ${isMobileSafari})...`);
+      await new Promise(resolve => setTimeout(resolve, initDelay));
 
       console.log("Initializing Auth...");
       console.log("Current URL:", window.location.href);
       console.log("Referrer:", document.referrer);
       setLoading(true);
 
-      const isRedirectPending = safeLocalStorageGet("auth_redirect_pending") === "true";
-      console.log("Is redirect pending in localStorage?", isRedirectPending);
+      // Check for pending redirect in both storage types
+      const localPending = safeLocalStorageGet("auth_redirect_pending") === "true";
+      let sessionPending = false;
+      try {
+        sessionPending = sessionStorage.getItem("auth_redirect_pending") === "true";
+      } catch { }
+      const isRedirectPending = localPending || sessionPending;
+      console.log("Is redirect pending?", { localPending, sessionPending, isRedirectPending });
 
       // 1. Setup the permanent listener FIRST
-      // Sometimes the observer picks up the user before getRedirectResult finishes
       console.log("Setting up onAuthStateChanged listener...");
       unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
         if (!isActive) return;
@@ -175,6 +187,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (currentUser) {
           console.log("Auth state changed: User logged in", currentUser.email);
           safeLocalStorageRemove("auth_redirect_pending");
+          try { sessionStorage.removeItem("auth_redirect_pending"); } catch { }
           await checkAccess(currentUser);
         } else {
           console.log("Auth state changed: No user");
@@ -187,13 +200,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
 
       try {
-        // 2. Check for Redirect Result
+        // 2. Check for Redirect Result - with retry for Safari
         console.log("Checking getRedirectResult...");
-        const result = await getRedirectResult(auth);
+        let result = await getRedirectResult(auth);
+
+        // Safari sometimes needs a second try after a delay
+        if (!result?.user && isRedirectPending && isMobileSafari) {
+          console.log("No result on first try, waiting and retrying for Safari...");
+          await new Promise(resolve => setTimeout(resolve, 1500));
+          result = await getRedirectResult(auth);
+        }
 
         if (result?.user) {
           console.log("Redirect result found:", result.user.email);
           safeLocalStorageRemove("auth_redirect_pending");
+          try { sessionStorage.removeItem("auth_redirect_pending"); } catch { }
           await checkAccess(result.user);
           if (!isActive) return;
         } else {
@@ -201,21 +222,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (isRedirectPending) {
             console.log("Redirect was pending but no result found. Waiting for listener or timeout...");
 
-            // Final timeout for redirect
+            // Final timeout for redirect - longer for Safari
+            const timeoutMs = isMobileSafari ? 8000 : 4000;
             setTimeout(() => {
-              if (safeLocalStorageGet("auth_redirect_pending") === "true") {
+              const stillPending = safeLocalStorageGet("auth_redirect_pending") === "true";
+              if (stillPending) {
                 console.log("Redirect pending timeout reached.");
                 safeLocalStorageRemove("auth_redirect_pending");
+                try { sessionStorage.removeItem("auth_redirect_pending"); } catch { }
                 if (!auth.currentUser) {
                   setLoading(false);
+                  toast.error("Inloggen mislukt. Probeer het opnieuw.");
                 }
               }
-            }, 4000); // Total 5 seconds from start
+            }, timeoutMs);
           }
         }
       } catch (error) {
         console.error("Auth Initialization Error (getRedirectResult):", error);
         safeLocalStorageRemove("auth_redirect_pending");
+        try { sessionStorage.removeItem("auth_redirect_pending"); } catch { }
         setLoading(false);
       }
     };
@@ -235,19 +261,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await setPersistence(auth, browserLocalPersistence);
 
-      // Always try popup first - it's more reliable on mobile browsers
-      // Redirect has issues with cookie/session storage on Safari/iOS
-      console.log("Attempting signInWithPopup...");
+      // Detect if we're on mobile Safari/iOS - these block popups and have redirect issues
+      const isMobileSafari = /iPhone|iPad|iPod/i.test(navigator.userAgent) &&
+        /Safari/i.test(navigator.userAgent) &&
+        !/Chrome|CriOS|FxiOS/i.test(navigator.userAgent);
+      const isAndroid = /Android/i.test(navigator.userAgent);
+      const isMobile = isMobileSafari || isAndroid;
+
+      console.log("Device detection:", { isMobileSafari, isAndroid, isMobile });
+
+      if (isMobile) {
+        // On mobile, use redirect directly - popups are always blocked
+        console.log("Mobile detected, using signInWithRedirect directly...");
+
+        // Store pending state in both localStorage AND sessionStorage for redundancy
+        safeLocalStorageSet("auth_redirect_pending", "true");
+        try {
+          sessionStorage.setItem("auth_redirect_pending", "true");
+          sessionStorage.setItem("auth_redirect_time", Date.now().toString());
+        } catch (e) {
+          console.log("sessionStorage not available:", e);
+        }
+
+        // Small delay to ensure storage is written before redirect
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        await signInWithRedirect(auth, googleProvider);
+        return;
+      }
+
+      // Desktop: try popup first
+      console.log("Desktop detected, attempting signInWithPopup...");
       try {
         const result = await signInWithPopup(auth, googleProvider);
         console.log("Popup sign-in successful:", result.user.email);
-        // onAuthStateChanged will handle the rest
         return;
       } catch (popupError: unknown) {
         const errorCode = getErrorCode(popupError);
         console.log("Popup failed with code:", errorCode);
 
-        // Only fall back to redirect for specific popup-blocked errors
         if (errorCode === 'auth/popup-blocked' ||
           errorCode === 'auth/popup-closed-by-user' ||
           errorCode === 'auth/cancelled-popup-request') {
@@ -257,7 +309,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        // For other errors, re-throw to be handled below
         throw popupError;
       }
     } catch (error: unknown) {

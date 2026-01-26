@@ -1,6 +1,6 @@
 {
   "name": "maaltijdplus",
-  "version": "1.260126.9",
+  "version": "1.260126.10",
   "private": true,
   "scripts": {
     "dev": "next dev -p 3010",
