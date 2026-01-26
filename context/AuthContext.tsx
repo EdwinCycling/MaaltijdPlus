@@ -155,6 +155,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       isInitializing.current = true;
 
+      // Small delay for Safari/iOS to ensure indexedDB/cookies are ready
+      await new Promise(resolve => setTimeout(resolve, 500));
+
       console.log("Initializing Auth...");
       console.log("Current URL:", window.location.href);
       setLoading(true);
@@ -162,33 +165,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         await setPersistence(auth, browserLocalPersistence);
         
+        const isRedirectPending = safeLocalStorageGet("auth_redirect_pending") === "true";
+        console.log("Is redirect pending in localStorage?", isRedirectPending);
+
         // 1. Check for Redirect Result
         console.log("Checking getRedirectResult...");
         const result = await getRedirectResult(auth);
         
         if (result?.user) {
           console.log("Redirect result found:", result.user.email);
+          safeLocalStorageRemove("auth_redirect_pending");
           await checkAccess(result.user);
           if (!isActive) return;
         } else {
           console.log("No redirect result found. (result is null)");
-          // Check if there are auth-related params in the URL that might explain why result is null
-          const urlParams = new URLSearchParams(window.location.search);
-          if (urlParams.has("error") || urlParams.has("errorCode")) {
-            console.error("Auth error found in URL params:", {
-              error: urlParams.get("error"),
-              code: urlParams.get("errorCode")
-            });
+          if (isRedirectPending) {
+            console.log("Redirect was pending but no result found. Checking auth state as fallback...");
+            // Don't remove flag yet, let onAuthStateChanged try
           }
         }
       } catch (error) {
         console.error("Auth Initialization Error (getRedirectResult):", error);
-        const code = getErrorCode(error);
-        if (code === "auth/internal-error" || code === "auth/network-request-failed") {
-          toast.error("Netwerkfout bij inloggen. Controleer je verbinding.");
-        } else {
-          toast.error(`Inlogfout: ${getErrorMessage(error)}`);
-        }
+        safeLocalStorageRemove("auth_redirect_pending");
+        // ... rest of error handling
       }
 
       // 2. Setup the permanent listener
@@ -198,11 +197,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         
         if (currentUser) {
           console.log("Auth state changed: User logged in", currentUser.email);
+          safeLocalStorageRemove("auth_redirect_pending");
           await checkAccess(currentUser);
         } else {
           console.log("Auth state changed: No user");
-          setUser(null);
-          setLoading(false);
+          // Only stop loading if we're not waiting for a redirect that might still be processing
+          const stillPending = safeLocalStorageGet("auth_redirect_pending") === "true";
+          if (!stillPending) {
+            setUser(null);
+            setLoading(false);
+          } else {
+            console.log("Still waiting for redirect result/state...");
+            // Timeout to prevent infinite loading if redirect fails silently
+            setTimeout(() => {
+              if (safeLocalStorageGet("auth_redirect_pending") === "true") {
+                console.log("Redirect pending timeout reached.");
+                safeLocalStorageRemove("auth_redirect_pending");
+                setLoading(false);
+              }
+            }, 5000);
+          }
         }
       });
     };
@@ -223,9 +237,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log("Device is mobile:", isMobile);
       
       await setPersistence(auth, browserLocalPersistence);
-      
+     try {
       if (isMobile) {
         console.log("Using signInWithRedirect");
+        safeLocalStorageSet("auth_redirect_pending", "true");
         await signInWithRedirect(auth, googleProvider);
       } else {
         console.log("Using signInWithPopup");
