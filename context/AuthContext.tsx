@@ -155,20 +155,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       isInitializing.current = true;
 
-      // Small delay for Safari/iOS to ensure indexedDB/cookies are ready
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Increased delay for Safari/iOS to ensure indexedDB/cookies are ready
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
       console.log("Initializing Auth...");
       console.log("Current URL:", window.location.href);
+      console.log("Referrer:", document.referrer);
       setLoading(true);
 
-      try {
-        await setPersistence(auth, browserLocalPersistence);
-        
-        const isRedirectPending = safeLocalStorageGet("auth_redirect_pending") === "true";
-        console.log("Is redirect pending in localStorage?", isRedirectPending);
+      const isRedirectPending = safeLocalStorageGet("auth_redirect_pending") === "true";
+      console.log("Is redirect pending in localStorage?", isRedirectPending);
 
-        // 1. Check for Redirect Result
+      // 1. Setup the permanent listener FIRST
+      // Sometimes the observer picks up the user before getRedirectResult finishes
+      console.log("Setting up onAuthStateChanged listener...");
+      unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+        if (!isActive) return;
+        
+        if (currentUser) {
+          console.log("Auth state changed: User logged in", currentUser.email);
+          safeLocalStorageRemove("auth_redirect_pending");
+          await checkAccess(currentUser);
+        } else {
+          console.log("Auth state changed: No user");
+          const stillPending = safeLocalStorageGet("auth_redirect_pending") === "true";
+          if (!stillPending) {
+            setUser(null);
+            setLoading(false);
+          }
+        }
+      });
+
+      try {
+        // 2. Check for Redirect Result
         console.log("Checking getRedirectResult...");
         const result = await getRedirectResult(auth);
         
@@ -180,45 +199,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } else {
           console.log("No redirect result found. (result is null)");
           if (isRedirectPending) {
-            console.log("Redirect was pending but no result found. Checking auth state as fallback...");
-            // Don't remove flag yet, let onAuthStateChanged try
+            console.log("Redirect was pending but no result found. Waiting for listener or timeout...");
+            
+            // Final timeout for redirect
+            setTimeout(() => {
+              if (safeLocalStorageGet("auth_redirect_pending") === "true") {
+                console.log("Redirect pending timeout reached.");
+                safeLocalStorageRemove("auth_redirect_pending");
+                if (!auth.currentUser) {
+                  setLoading(false);
+                }
+              }
+            }, 4000); // Total 5 seconds from start
           }
         }
       } catch (error) {
         console.error("Auth Initialization Error (getRedirectResult):", error);
         safeLocalStorageRemove("auth_redirect_pending");
-        // ... rest of error handling
+        setLoading(false);
       }
-
-      // 2. Setup the permanent listener
-      console.log("Setting up onAuthStateChanged listener...");
-      unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-        if (!isActive) return;
-        
-        if (currentUser) {
-          console.log("Auth state changed: User logged in", currentUser.email);
-          safeLocalStorageRemove("auth_redirect_pending");
-          await checkAccess(currentUser);
-        } else {
-          console.log("Auth state changed: No user");
-          // Only stop loading if we're not waiting for a redirect that might still be processing
-          const stillPending = safeLocalStorageGet("auth_redirect_pending") === "true";
-          if (!stillPending) {
-            setUser(null);
-            setLoading(false);
-          } else {
-            console.log("Still waiting for redirect result/state...");
-            // Timeout to prevent infinite loading if redirect fails silently
-            setTimeout(() => {
-              if (safeLocalStorageGet("auth_redirect_pending") === "true") {
-                console.log("Redirect pending timeout reached.");
-                safeLocalStorageRemove("auth_redirect_pending");
-                setLoading(false);
-              }
-            }, 5000);
-          }
-        }
-      });
     };
 
     void initializeAuth();
